@@ -142,11 +142,11 @@ All scripts in `scripts/qa/` were audited, tested, and hardened for 100% compati
 
 ## 8. Security & Secrets Audit
 
-- **Automated Regex Scan**: Scanned all source code, manifests, configs, and documentation for API keys, private keys, certificates, passwords, AWS tokens, GitHub tokens, and bearer tokens.
-- **Findings**:
-  - `0` real credentials, tokens, or private keys discovered.
-  - Match in `Axora-Desktop-MaterialUI/src-tauri/src/vault.rs` was verified to be a unit test dummy string (`"SecretMasterPassword2026!"`).
-- **Secret Protection**: `.gitignore` strictly blocks all `*.pfx`, `*.p12`, `*.key`, `*.pem`, `*.cer`, `*.crt`, `.env`, `.env.*`, `secrets.json`, and machine credentials.
+- **Automated Deep Scan**: Executed [`scripts/qa/security-scan.ps1`](file:///d:/RAJ/GITHUB_REPOSITORY\PROJECTS\AXORA-DESKTOP\scripts\qa\security-scan.ps1) scanning 344 files and full Git commit history against 9 high-risk credential patterns (Google API keys, GitHub tokens, Slack tokens, Private Keys, OpenAI keys, AWS keys, hardcoded password and secret assignments).
+- **Working Tree Result**: `PASS (0 secrets detected across 344 files)`.
+- **Git History Result**: `PASS (0 real secrets found in commit history)`.
+- **Historical Fixture Disclosure**: In commit `a9d0491`, `vault.rs` contained the dummy passphrase string `'SecretMasterPassword2026!'` in a unit test. This was transparently disclosed, classified as a non-secret test fixture, and replaced in HEAD with `dummy_fixture_passphrase = String::from("axora-non-secret-test-dummy")` to eliminate false-positive heuristics permanently.
+- **Configuration & Manifests**: `PASS (0 credentials in manifests or configs)`.
 
 ---
 
@@ -158,29 +158,59 @@ All scripts in `scripts/qa/` were audited, tested, and hardened for 100% compati
   - Cleanly excludes Visual Studio user state (`.vs/`, `*.user`, `*.suo`).
   - Cleanly excludes transient QA evidence (`docs/qa/`, `qa-evidence/`, `TestResults/`, `screenshots/`, `*.dump`).
   - Safely ignores legacy subproject agent logs (`Axora-Desktop-WinUI/.agents/`) without deleting them from disk.
-- **Preserved Files**: All source code, project files, solutions, assets, scripts, documentation, and root `.agents/` are recognized as tracked/staged candidates.
+- **Preserved Files**: All source code, project files, solutions, assets, scripts, documentation, and root `.agents/` are recognized as tracked candidates.
 
 ---
 
-## 10. Summary of Changes Made
+## 10. AXORA Desktop Engineering Baseline 1 Matrix
+
+The repository state at commit `a9d0491` (plus second-pass hardening) constitutes **AXORA Desktop Engineering Baseline 1**:
+
+| Baseline Dimension | Status | Evidence / Verification Method |
+|---|---|---|
+| **WinUI Build** | `PASS` | Compiled cleanly with 0 errors via MSBuild v18.9 and `dotnet build`. |
+| **WinUI Tests** | `PASS` | 59/59 adversarial stress assertions passed (`Axora.Desktop.Tests.exe`). |
+| **WinUI Runtime** | `PASS` | Process launched (PID 9968), 11 startup diagnostic phases verified in `startup.log`, clean exit. |
+| **MaterialUI Static Audit** | `PASS` | `package.json`, `Cargo.toml`, `tauri.conf.json`, and TypeScript/Rust source verified intact. |
+| **MaterialUI Build** | `BLOCKED` | Host limitation: Node.js and Rust/Cargo are absent from host PATH. |
+| **MaterialUI Tests** | `BLOCKED` | Host limitation: Cargo toolchain is absent from host PATH. |
+| **MaterialUI Runtime** | `BLOCKED` | Native binary compilation blocked by host toolchain absence. |
+| **Security Current Tree** | `PASS` | `security-scan.ps1` verified 0 secrets across all 344 files. |
+| **Security Git History** | `PASS` | 0 real credentials in history; historical test fixture disclosed and replaced. |
+| **UI Static Validation** | `PASS` | Zero XAML compilation errors; all `{ThemeResource}` brushes resolved. |
+| **UI Functional Validation** | `PASS` | 59 stress test assertions validate models, viewmodels, and business logic. |
+| **UI Runtime Smoke** | `PASS` | WinUI window instantiates with `MicaKind.BaseAlt` and 1000x620 DIP bounds. |
+| **UI Interaction QA** | `MANUAL VERIFICATION REQUIRED` | Hotkeys (`Ctrl+K`), modal popups, and drag-and-drop require active user input. |
+| **UI Visual QA** | `MANUAL VERIFICATION REQUIRED` | Rendering fidelity must be visually inspected against 25-Point Checklist. |
+| **UI Accessibility QA** | `NOT VERIFIED` | Full screen reader (Narrator) and high-contrast validation pending automation harness. |
+| **Antigravity Configuration** | `PASS` | All 6 rules, 6 skills, 13 workflows, 6 subagents, `hooks.json`, and `mcp_config.json` valid. |
+| **MCP Configuration** | `PASS` | `@modelcontextprotocol/server-chrome-devtools` configured without secrets. |
+| **MCP Connectivity** | `NOT VERIFIED` | WebView2 DevTools connection requires active MaterialUI debug runtime session. |
+
+---
+
+## 11. Summary of Changes Made
 
 1. **`Axora-Desktop-WinUI/Directory.Build.props`**: Added multi-drive detection for `<AppxMSBuildToolsPath>` (`C:\Program Files` and `D:\Program Files`), fixing `dotnet build` MSB4062 error.
 2. **`Axora-Desktop-WinUI/Axora.Desktop/App.xaml`**: Resolved Issue W-02 by declaring `<ThemeShadow x:Key="Elevation16Shadow" />` in global application resources, preventing runtime `XamlParseException` on `SettingsPage`.
-3. **`Axora-Desktop-MaterialUI/src-tauri/tauri.conf.json`**: Added `minWidth: 960` and `minHeight: 600` window constraints to guarantee responsive minimum layout integrity matching WinUI's `WM_GETMINMAXINFO` subclassing.
-4. **`Axora-Desktop-MaterialUI/src/components/Sidebar.tsx`**: Added `Spaced Repetition` (`BookOpen` icon) to `NAV_ITEMS` for 1-click access to Flashcard Studio, establishing direct feature parity with WinUI. Clarified Issue M-01 event bus functionality.
-5. **`scripts/qa/smoke-test.ps1`**: Standardized ASCII encoding, fixed PowerShell 5.1 string parsing, added multi-path binary resolution, and added exit code 2 (`BLOCKED`) when target executables are unavailable.
-6. **`scripts/qa/run-tests.ps1`**: Dynamic regex parsing of test output, multi-path binary discovery, and explicit exit code 2 (`BLOCKED`) when 0 tests execute due to missing host toolchains.
-7. **`scripts/qa/build-all.ps1`**: Added execution tracking, fallback to `dotnet build`, clean ASCII headers, and explicit exit code 2 (`BLOCKED`) when toolchains are missing.
-8. **`scripts/qa/audit-workspace.ps1`**: Standardized ASCII encoding, added Node.js and Rust/Cargo environment diagnostics.
-9. **`.gitignore`**: Excluded transient QA evidence (`docs/qa/`, `TestResults/`, etc.) and legacy subproject agent logs (`Axora-Desktop-WinUI/.agents/`).
-10. **`docs/UI_QA_CONTRACT.md` [NEW]**: Established authoritative 6-layer UI QA contract and universal 15-point PASS criteria.
-11. **`docs/UI_TEST_STRATEGY.md` [NEW]**: Formulated practical UI testing boundaries, decision standards, and the 9-stage Vibe Coding Quality Gate.
-12. **`.agents/workflows/axora-ui-qa.md`**: Encoded the 9-stage Vibe Coding Quality Gate directly into the Antigravity workflow.
+3. **`Axora-Desktop-MaterialUI/src-tauri/src/vault.rs`**: Replaced unit test dummy password `"SecretMasterPassword2026!"` with `dummy_fixture_passphrase = String::from("axora-non-secret-test-dummy")`.
+4. **`Axora-Desktop-MaterialUI/src-tauri/tauri.conf.json`**: Added `minWidth: 960` and `minHeight: 600` window constraints to guarantee responsive minimum layout integrity matching WinUI's `WM_GETMINMAXINFO` subclassing.
+5. **`Axora-Desktop-MaterialUI/src/components/Sidebar.tsx`**: Added `Spaced Repetition` (`BookOpen` icon) to `NAV_ITEMS` for 1-click access to Flashcard Studio, establishing direct feature parity with WinUI. Clarified Issue M-01 event bus functionality.
+6. **`scripts/qa/security-scan.ps1` [NEW]**: Multi-pattern security scanner checking working tree, commit history, test fixtures, and configurations with transparent disclosure reporting.
+7. **`scripts/qa/doctor.ps1` [NEW]**: Environment doctor script evaluating OS, Git, .NET, MSBuild, Node, Rust, Antigravity structure, and process locks.
+8. **`scripts/qa/smoke-test.ps1`**: Standardized ASCII encoding, fixed PowerShell 5.1 string parsing, added multi-path binary resolution, and added exit code 2 (`BLOCKED`) when target executables are unavailable.
+9. **`scripts/qa/run-tests.ps1`**: Dynamic regex parsing of test output, multi-path binary discovery, and explicit exit code 2 (`BLOCKED`) when 0 tests execute due to missing host toolchains.
+10. **`scripts/qa/build-all.ps1`**: Added execution tracking, fallback to `dotnet build`, clean ASCII headers, and explicit exit code 2 (`BLOCKED`) when toolchains are missing.
+11. **`scripts/qa/audit-workspace.ps1`**: Standardized ASCII encoding, added Node.js and Rust/Cargo environment diagnostics.
+12. **`.gitignore`**: Excluded transient QA evidence (`docs/qa/`, `TestResults/`, etc.) and legacy subproject agent logs (`Axora-Desktop-WinUI/.agents/`).
+13. **`docs/UI_QA_CONTRACT.md` [NEW]**: Established authoritative 6-layer UI QA contract and universal 15-point PASS criteria.
+14. **`docs/UI_TEST_STRATEGY.md` [NEW]**: Formulated practical UI testing boundaries, decision standards, and the 9-stage Vibe Coding Quality Gate.
+15. **Antigravity Workflows Suite**: Added 6 new workflows (`/axora-smoke`, `/axora-security`, `/axora-git`, `/axora-release`, `/axora-doctor`, `/axora-plan`) bringing the total to 13 official workflows.
 
 ---
 
-## 11. Remaining Limitations & Next Steps
+## 12. Remaining Limitations & Next Steps
 
 1. **MaterialUI Host Toolchain**: To compile and run `Axora-Desktop-MaterialUI` from scratch on this machine, Node.js (v18+) and the Rust toolchain (`rustup` / `cargo`) must be installed.
 2. **Desktop Visual UI Automation**: Automated UI tree inspection (e.g. via FlaUI / Windows App Driver) can be added in a future milestone to automate Layer 4 and Layer 5 testing.
-3. **First Commit**: Proceed with clean staged-file review and first git commit.
+3. **Continuous Maintenance**: Adhere strictly to the `/axora-ui-qa` Vibe Coding Quality Gate during feature development.

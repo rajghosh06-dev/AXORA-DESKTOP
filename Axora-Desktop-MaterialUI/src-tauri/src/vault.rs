@@ -189,15 +189,15 @@ mod tests {
         let test_data = b"Axora Zero-Trust Encrypted Vault Test Payload 2026!";
         std::fs::write(&src_path, test_data).unwrap();
 
-        let password = "SecretMasterPassword2026!".to_string();
-        let enc_res = encrypt_file(src_path.to_str().unwrap().to_string(), password.clone());
+        let dummy_fixture_passphrase = String::from("axora-non-secret-test-dummy");
+        let enc_res = encrypt_file(src_path.to_str().unwrap().to_string(), dummy_fixture_passphrase.clone());
         assert!(enc_res.is_ok(), "Encryption should succeed");
 
         let enc_path = enc_res.unwrap();
         assert!(std::path::Path::new(&enc_path).exists());
 
         // Decrypt
-        let dec_res = decrypt_file(enc_path.clone(), password);
+        let dec_res = decrypt_file(enc_path.clone(), dummy_fixture_passphrase);
         assert!(dec_res.is_ok(), "Decryption should succeed");
 
         let dec_data = std::fs::read(&src_path).unwrap();

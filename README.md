@@ -26,19 +26,25 @@ AXORA-DESKTOP/
 Run the central QA automation scripts from PowerShell:
 
 ```powershell
-# 1. Audit Workspace Health & Toolchains
+# 1. System & Toolchain Doctor
+.\scripts\qa\doctor.ps1
+
+# 2. Audit Workspace Health & Antigravity Setup
 .\scripts\qa\audit-workspace.ps1
 
-# 2. Build WinUI Application Cleanly
+# 3. Build WinUI Application Cleanly
 .\scripts\qa\build-all.ps1 -Target WinUI
 
-# 3. Run Automated Adversarial Stress Tests (59 Assertions)
+# 4. Run Automated Adversarial Stress Tests (59 Assertions)
 .\scripts\qa\run-tests.ps1
 
-# 4. Perform Runtime Smoke Launch & Verify Logs
+# 5. Perform Runtime Smoke Launch & Verify Logs
 .\scripts\qa\smoke-test.ps1 -Target WinUI
 
-# 5. Clean Process Locks
+# 6. Security & Secrets Deep Scan
+.\scripts\qa\security-scan.ps1
+
+# 7. Clean Process Locks
 .\scripts\qa\pre-build-clean.ps1
 ```
 
@@ -46,14 +52,20 @@ Run the central QA automation scripts from PowerShell:
 
 ## 3. Antigravity Agent Workflows
 
-When pair-programming with Antigravity, the following slash commands are available:
-- `/axora-audit`: Fast repository health and toolchain audit.
+When developing with Antigravity, the following AXORA workflows are available:
+- `/axora-doctor`: Comprehensive host OS, toolchain, git, and workspace diagnostics.
+- `/axora-audit`: Fast repository health, rule, skill, and configuration audit.
 - `/axora-build`: Targeted clean compilation of WinUI, MaterialUI, or Both.
-- `/axora-test`: Automated test suite runner with structured pass/fail reporting.
-- `/axora-ui-qa`: Runtime UI inspection and layout validation.
-- `/axora-fix`: Systematic 9-step bug reproduction, root-cause diagnosis, and minimal fix cycle.
-- `/axora-verify`: Complete pre-completion verification gate.
-- `/axora-pr`: Clean Git diff audit and pull request preparation.
+- `/axora-test`: Automated test suite runner with dynamic regex parsing and reporting.
+- `/axora-smoke`: Process launch smoke test and `startup.log` diagnostic verification.
+- `/axora-security`: Deep multi-pattern secret scanning across tree, history, and configs.
+- `/axora-ui-qa`: 9-stage Vibe Coding Quality Gate and UI layout inspection.
+- `/axora-git`: Git index audit, ignored-file check, and tracking hygiene.
+- `/axora-verify`: Full pre-completion multi-layer verification suite.
+- `/axora-fix`: Systematic 9-step bug reproduction, root-cause analysis, and minimal fix.
+- `/axora-plan`: Architectural planning mode with user approval gating.
+- `/axora-pr`: Pre-commit git diff audit and cleanliness review.
+- `/axora-release`: Release readiness checklist and packaging verification.
 
 ---
 
