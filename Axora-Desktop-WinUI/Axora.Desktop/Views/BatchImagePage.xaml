@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Axora.Desktop.Views.BatchImagePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Grid Padding="24,6,24,24" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Header & Actions -->
+        <Border Grid.Row="0" CornerRadius="12" Padding="16,12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="Mass Batch Image Studio · Multi-Threaded WIC &amp; ImageMagick Processing"
+                               FontWeight="SemiBold" FontSize="13"/>
+                    <TextBlock Text="{Binding ViewModel.StatusMessage}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Open Output Folder" Command="{Binding ViewModel.OpenOutputFolderCommand}"/>
+                    <Button Content="Clear Queue" Command="{Binding ViewModel.ClearQueueCommand}"/>
+                    <Button Content="Start Processing"
+                            Command="{Binding ViewModel.StartBatchCommand}"
+                            Style="{StaticResource AccentButtonStyle}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main 2-Column Split Workspace -->
+        <Grid Grid.Row="1" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="400"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: Dropzone & Conversion Controls -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16">
+
+                    <!-- Drop Target -->
+                    <Border CornerRadius="14" Padding="24"
+                            MinHeight="160"
+                            BorderThickness="2"
+                            BorderBrush="{ThemeResource AccentControlElevationBorderBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            AllowDrop="True"
+                            DragOver="DropZone_DragOver"
+                            Drop="DropZone_Drop">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+                            <FontIcon Glyph="&#xEB9F;" FontSize="36"
+                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                            <TextBlock Text="Drop Images or Folders Here"
+                                       FontWeight="SemiBold" FontSize="14"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Supports concurrent batch processing for 1,000+ files"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       HorizontalAlignment="Center" Opacity="0.6"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,4,0,0">
+                                <Button Click="BrowseImages_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xEB9F;" FontSize="12"/>
+                                        <TextBlock Text="Browse Files"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Click="BrowseFolder_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xED25;" FontSize="12"/>
+                                        <TextBlock Text="Browse Folder"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Parameters Shelf -->
+                    <Border CornerRadius="12" Padding="18"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Spacing="14">
+                            <TextBlock Text="Transformation Pipeline" FontWeight="SemiBold" FontSize="13"/>
+
+                            <ComboBox Header="Processing Engine"
+                                      SelectedIndex="{Binding ViewModel.SelectedEngineIndex, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Windows Hardware WIC (DirectX GPU)"/>
+                                <ComboBoxItem Content="ImageMagick Q16 Studio (Optimal Compression)"/>
+                            </ComboBox>
+
+                            <ComboBox Header="Target Output Format"
+                                      SelectedIndex="{Binding ViewModel.SelectedFormatIndex, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="PNG (Lossless Standard)"/>
+                                <ComboBoxItem Content="JPEG (High-Speed Lossy)"/>
+                                <ComboBoxItem Content="BMP (Uncompressed Bitmaps)"/>
+                                <ComboBoxItem Content="TIFF (Archival Quality)"/>
+                            </ComboBox>
+
+                            <ComboBox Header="Scaling &amp; Dimensions"
+                                      SelectedIndex="{Binding ViewModel.SelectedResizeIndex, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Original Size (100%)"/>
+                                <ComboBoxItem Content="Scale Down to 50%"/>
+                                <ComboBoxItem Content="Scale Down to 75%"/>
+                                <ComboBoxItem Content="Fixed 1080p (1920px Width)"/>
+                                <ComboBoxItem Content="Fixed 4K UHD (3840px Width)"/>
+                            </ComboBox>
+
+                            <ComboBox Header="Compression Mode"
+                                      SelectedIndex="{Binding ViewModel.CompressionModeIndex, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Target File Size (ImageMagick Direct Extent)"/>
+                                <ComboBoxItem Content="Compression Quality (Percentage 1-100%)"/>
+                                <ComboBoxItem Content="Maximum Lossless Optimization"/>
+                            </ComboBox>
+
+                            <!-- Direct Target Size Controls (KB / MB / GB) -->
+                            <StackPanel Spacing="6" Visibility="{Binding ViewModel.IsTargetSizeMode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="Target Image File Size" Style="{StaticResource CaptionTextBlockStyle}"/>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="110"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding ViewModel.TargetSizeValue, Mode=TwoWay}"
+                                             PlaceholderText="e.g. 500 or 2.5"
+                                             CornerRadius="6"
+                                             InputScope="Number"/>
+                                    <ComboBox Grid.Column="1"
+                                              SelectedIndex="{Binding ViewModel.SelectedUnitIndex, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch">
+                                        <ComboBoxItem Content="KB"/>
+                                        <ComboBoxItem Content="MB"/>
+                                        <ComboBoxItem Content="GB"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <!-- Quick Presets -->
+                                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0">
+                                    <Button Content="200 KB" Command="{Binding ViewModel.SetTargetPresetCommand}" CommandParameter="200 KB" Padding="6,2" FontSize="11"/>
+                                    <Button Content="500 KB" Command="{Binding ViewModel.SetTargetPresetCommand}" CommandParameter="500 KB" Padding="6,2" FontSize="11"/>
+                                    <Button Content="1 MB" Command="{Binding ViewModel.SetTargetPresetCommand}" CommandParameter="1 MB" Padding="6,2" FontSize="11"/>
+                                    <Button Content="2 MB" Command="{Binding ViewModel.SetTargetPresetCommand}" CommandParameter="2 MB" Padding="6,2" FontSize="11"/>
+                                    <Button Content="5 MB" Command="{Binding ViewModel.SetTargetPresetCommand}" CommandParameter="5 MB" Padding="6,2" FontSize="11"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Quality Slider (shown in Quality Percentage mode) -->
+                            <StackPanel Spacing="4" Visibility="{Binding ViewModel.IsQualityMode, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Grid>
+                                    <TextBlock Text="Compression Quality" Style="{StaticResource CaptionTextBlockStyle}"/>
+                                    <TextBlock Text="{Binding ViewModel.QualityLevel, Mode=OneWay}"
+                                               HorizontalAlignment="Right"
+                                               FontWeight="SemiBold" FontSize="12"/>
+                                </Grid>
+                                <Slider Minimum="10" Maximum="100" StepFrequency="5"
+                                        Value="{Binding ViewModel.QualityLevel, Mode=TwoWay}"/>
+                            </StackPanel>
+
+                            <ToggleSwitch Header="Strip EXIF Metadata &amp; Location"
+                                          IsOn="{Binding ViewModel.StripMetadata, Mode=TwoWay}"
+                                          OnContent="Enabled" OffContent="Keep EXIF"/>
+
+                            <TextBox Header="Text Watermark (Optional)"
+                                     Text="{Binding ViewModel.WatermarkText, Mode=TwoWay}"
+                                     PlaceholderText="e.g. Confidential / Axora"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Output Destination Picker -->
+                    <Border CornerRadius="12" Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Output Destination" FontWeight="SemiBold" FontSize="13"/>
+                            <TextBlock Text="{Binding ViewModel.EffectiveOutputDirectory, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <Button Content="Change Destination Folder…"
+                                    Click="ChangeOutputFolder_Click"
+                                    HorizontalAlignment="Stretch" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right: Live Processing Dashboard & File Queue -->
+            <Border Grid.Column="1" CornerRadius="14" Padding="20"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                <Grid RowSpacing="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Progress Header -->
+                    <StackPanel Spacing="8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Batch Queue" FontWeight="SemiBold" FontSize="14"/>
+                            <TextBlock Grid.Column="1" Text="{Binding ViewModel.ProcessedCountFormatted}"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"
+                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                        </Grid>
+
+                        <ProgressBar Value="{Binding ViewModel.BatchProgress}"
+                                     Maximum="100" CornerRadius="4" Height="6"/>
+                    </StackPanel>
+
+                    <!-- Queue ListView with Empty State Placeholder -->
+                    <Grid Grid.Row="1">
+                        <!-- Empty State -->
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8" Padding="24"
+                                    Visibility="{Binding ViewModel.HasItems, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            <FontIcon Glyph="&#xEB9F;" FontSize="36"
+                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                      HorizontalAlignment="Center"/>
+                            <TextBlock Text="Batch Queue Empty"
+                                       FontWeight="SemiBold" FontSize="14"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Click 'Browse Files', 'Browse Folder', or drop images to begin batch processing."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       HorizontalAlignment="Center" TextAlignment="Center"/>
+                        </StackPanel>
+
+                        <ListView ItemsSource="{Binding ViewModel.Queue}"
+                                  SelectionMode="None"
+                                  Padding="0"
+                                  Visibility="{Binding ViewModel.HasItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="8,8" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Glyph="&#xEB9F;" FontSize="18" VerticalAlignment="Center"
+                                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" FontSize="13"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding FormattedOriginalSize}"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{Binding FormattedOutputSize}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding Status}"
+                                                   FontWeight="SemiBold" FontSize="12"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                </Grid>
+            </Border>
+
+        </Grid>
+    </Grid>
+</Page>

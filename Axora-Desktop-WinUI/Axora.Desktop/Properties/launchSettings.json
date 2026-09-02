@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Axora.Desktop (Unpackaged)": {
+      "commandName": "Project",
+      "nativeDebugging": false
+    }
+  }
+}

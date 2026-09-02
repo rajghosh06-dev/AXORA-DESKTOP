@@ -1,0 +1,602 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Google Material Design 3 — Complete Token System
+   Light + Dark surfaces based on the M3 Baseline Color Scheme
+   ──────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* MD3 Primary (Google Blue) */
+    --md-sys-color-primary: #0b57d0;
+    --md-sys-color-on-primary: #ffffff;
+    --md-sys-color-primary-container: #d3e3fd;
+    --md-sys-color-on-primary-container: #041e49;
+    --md-sys-color-inverse-primary: #a8c7fa;
+
+    /* MD3 Secondary */
+    --md-sys-color-secondary: #00639b;
+    --md-sys-color-on-secondary: #ffffff;
+    --md-sys-color-secondary-container: #cce5ff;
+    --md-sys-color-on-secondary-container: #001d35;
+
+    /* MD3 Tertiary */
+    --md-sys-color-tertiary: #6b3fa0;
+    --md-sys-color-on-tertiary: #ffffff;
+    --md-sys-color-tertiary-container: #eddcff;
+    --md-sys-color-on-tertiary-container: #27005d;
+
+    /* MD3 Error */
+    --md-sys-color-error: #b3261e;
+    --md-sys-color-on-error: #ffffff;
+    --md-sys-color-error-container: #f9dedc;
+    --md-sys-color-on-error-container: #410e0b;
+
+    /* MD3 Surface Tones (Softer Light mode to prevent eye strain) */
+    --md-sys-color-surface: #faf8f5;
+    --md-sys-color-surface-dim: #e6e4e0;
+    --md-sys-color-surface-bright: #faf8f5;
+    --md-sys-color-surface-container-lowest: #ffffff;
+    --md-sys-color-surface-container-low: #f4f2ee;
+    --md-sys-color-surface-container: #edebe7;
+    --md-sys-color-surface-container-high: #e6e4e0;
+    --md-sys-color-surface-container-highest: #dfddd9;
+    --md-sys-color-inverse-surface: #303033;
+    --md-sys-color-inverse-on-surface: #f2f0f4;
+
+    /* MD3 On-Surface (Charcoal instead of stark black) */
+    --md-sys-color-on-surface: #2c2e30;
+    --md-sys-color-on-surface-variant: #595c62;
+    --md-sys-color-scrim: #000000;
+
+    /* MD3 Outline */
+    --md-sys-color-outline: #747775;
+    --md-sys-color-outline-variant: #c4c7c5;
+
+
+    /* MD3 Elevation Tints (tonal overlay on primary at each level) */
+    --md-elevation-tint-1: rgba(11, 87, 208, 0.05);
+    --md-elevation-tint-2: rgba(11, 87, 208, 0.08);
+    --md-elevation-tint-3: rgba(11, 87, 208, 0.11);
+    --md-elevation-tint-4: rgba(11, 87, 208, 0.12);
+    --md-elevation-tint-5: rgba(11, 87, 208, 0.14);
+
+    /* MD3 State Layer Opacities */
+    --md-state-hover-opacity: 0.08;
+    --md-state-focus-opacity: 0.12;
+    --md-state-pressed-opacity: 0.12;
+    --md-state-dragged-opacity: 0.16;
+
+    /* MD3 Typography Scale — body */
+    --md-sys-typescale-display-large: 57px;
+    --md-sys-typescale-headline-large: 32px;
+    --md-sys-typescale-headline-medium: 28px;
+    --md-sys-typescale-title-large: 22px;
+    --md-sys-typescale-title-medium: 16px;
+    --md-sys-typescale-body-large: 16px;
+    --md-sys-typescale-body-medium: 14px;
+    --md-sys-typescale-label-large: 14px;
+    --md-sys-typescale-label-medium: 12px;
+    --md-sys-typescale-label-small: 11px;
+    --md-sys-typescale-line-height-body: 1.5;
+    --md-sys-typescale-tracking-tight: -0.01em;
+    --md-sys-typescale-tracking-normal: 0;
+  }
+
+  /* ─── DARK THEME ─────────────────────────────────────────────────── */
+  .dark {
+    --md-sys-color-primary: #a8c7fa;
+    --md-sys-color-on-primary: #062e6f;
+    --md-sys-color-primary-container: #0842a0;
+    --md-sys-color-on-primary-container: #d3e3fd;
+    --md-sys-color-inverse-primary: #0b57d0;
+
+    --md-sys-color-secondary: #7fcfff;
+    --md-sys-color-on-secondary: #003355;
+    --md-sys-color-secondary-container: #004a77;
+    --md-sys-color-on-secondary-container: #cce5ff;
+
+    --md-sys-color-tertiary: #cfbdff;
+    --md-sys-color-on-tertiary: #390075;
+    --md-sys-color-tertiary-container: #52008f;
+    --md-sys-color-on-tertiary-container: #eddcff;
+
+    --md-sys-color-error: #f2b8b5;
+    --md-sys-color-on-error: #601410;
+    --md-sys-color-error-container: #8c1d18;
+    --md-sys-color-on-error-container: #f9dedc;
+
+    --md-sys-color-surface: #111418;
+    --md-sys-color-surface-dim: #111418;
+    --md-sys-color-surface-bright: #36393d;
+    --md-sys-color-surface-container-lowest: #0c0f13;
+    --md-sys-color-surface-container-low: #1a1d21;
+    --md-sys-color-surface-container: #1e2126;
+    --md-sys-color-surface-container-high: #292c31;
+    --md-sys-color-surface-container-highest: #33363b;
+    --md-sys-color-inverse-surface: #e3e2e6;
+    --md-sys-color-inverse-on-surface: #303033;
+
+    --md-sys-color-on-surface: #e3e2e6;
+    --md-sys-color-on-surface-variant: #c4c7c5;
+
+    --md-sys-color-outline: #8e918f;
+    --md-sys-color-outline-variant: #444746;
+
+    --md-elevation-tint-1: rgba(168, 199, 250, 0.05);
+    --md-elevation-tint-2: rgba(168, 199, 250, 0.08);
+    --md-elevation-tint-3: rgba(168, 199, 250, 0.11);
+    --md-elevation-tint-4: rgba(168, 199, 250, 0.12);
+    --md-elevation-tint-5: rgba(168, 199, 250, 0.14);
+  }
+
+
+
+  /* ─── BASE RESETS ────────────────────────────────────────────────── */
+  html, body, #root {
+    @apply h-full w-full m-0 p-0 overflow-hidden bg-md-surface text-md-on-surface;
+    font-family: 'Google Sans', 'Roboto', 'Inter', system-ui, sans-serif;
+    font-size: var(--md-sys-typescale-body-large);
+    line-height: var(--md-sys-typescale-line-height-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 280ms cubic-bezier(0.2, 0, 0, 1),
+                color 280ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* ─── MD3 ELEVATION LEVELS (tonal surface + shadow) ─────────────── */
+  /* Level 1 — cards, drawers */
+  .md-elevation-1 {
+    background-color: var(--md-elevation-tint-1);
+    box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.3),
+                0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+  }
+  /* Level 2 — FAB, nav bar */
+  .md-elevation-2 {
+    background-color: var(--md-elevation-tint-2);
+    box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.3),
+                0px 2px 6px 2px rgba(0, 0, 0, 0.15);
+  }
+  /* Level 3 — modals, menus */
+  .md-elevation-3 {
+    background-color: var(--md-elevation-tint-3);
+    box-shadow: 0px 4px 8px 3px rgba(0, 0, 0, 0.15),
+                0px 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  /* Level 4 — navigation drawer */
+  .md-elevation-4 {
+    background-color: var(--md-elevation-tint-4);
+    box-shadow: 0px 6px 10px 4px rgba(0, 0, 0, 0.15),
+                0px 2px 3px rgba(0, 0, 0, 0.3);
+  }
+  /* Level 5 — dialogs */
+  .md-elevation-5 {
+    background-color: var(--md-elevation-tint-5);
+    box-shadow: 0px 8px 12px 6px rgba(0, 0, 0, 0.15),
+                0px 4px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ─── MD3 STATE LAYERS ───────────────────────────────────────────── */
+  .md-state-layer {
+    position: relative;
+    overflow: hidden;
+  }
+  .md-state-layer::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: currentColor;
+    opacity: 0;
+    border-radius: inherit;
+    transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1);
+    pointer-events: none;
+  }
+  .md-state-layer:hover::before {
+    opacity: var(--md-state-hover-opacity);
+  }
+  .md-state-layer:focus-visible::before {
+    opacity: var(--md-state-focus-opacity);
+  }
+  .md-state-layer:active::before {
+    opacity: var(--md-state-pressed-opacity);
+  }
+
+  /* ─── MD3 RIPPLE ANIMATION ───────────────────────────────────────── */
+  @keyframes md-ripple {
+    0% {
+      transform: scale(0);
+      opacity: 0.35;
+    }
+    100% {
+      transform: scale(4);
+      opacity: 0;
+    }
+  }
+  .md-ripple-effect {
+    position: relative;
+    overflow: hidden;
+  }
+  .md-ripple-circle {
+    position: absolute;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0;
+    animation: md-ripple 600ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    pointer-events: none;
+  }
+
+  /* ─── MD3 FOCUS RING ─────────────────────────────────────────────── */
+  .md-focus-ring:focus-visible {
+    outline: 3px solid var(--md-sys-color-primary);
+    outline-offset: 3px;
+    border-radius: inherit;
+  }
+
+  /* ─── MOTION EASING CURVES (MD3 standard) ───────────────────────── */
+  :root {
+    --md-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+    --md-easing-decelerate: cubic-bezier(0, 0, 0, 1);
+    --md-easing-accelerate: cubic-bezier(0.3, 0, 1, 1);
+    --md-easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --md-duration-short1: 50ms;
+    --md-duration-short2: 100ms;
+    --md-duration-short3: 150ms;
+    --md-duration-short4: 200ms;
+    --md-duration-medium1: 250ms;
+    --md-duration-medium2: 300ms;
+    --md-duration-long1: 350ms;
+    --md-duration-long2: 400ms;
+    --md-duration-extra-long1: 700ms;
+  }
+
+  /* ─── SCROLLBAR (MD3 — overlay style) ───────────────────────────── */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 20px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background-color var(--md-duration-medium1) var(--md-easing-standard);
+  }
+  *:hover::-webkit-scrollbar-thumb,
+  .is-scrolling *::-webkit-scrollbar-thumb {
+    background-color: var(--md-sys-color-outline-variant);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--md-sys-color-outline);
+  }
+  .dark *:hover::-webkit-scrollbar-thumb,
+  .dark .is-scrolling *::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.15);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+  }
+
+  /* ─── GLOBAL TRANSITION (theme change) ──────────────────────────── */
+  *, *::before, *::after {
+    transition-timing-function: var(--md-easing-standard);
+  }
+}
+
+/* ─── MD3 COMPONENT UTILITIES ─────────────────────────────────────────────── */
+@layer components {
+  /* MD3 Filled Button */
+  .md3-btn-filled {
+    @apply flex items-center justify-center gap-2 px-6 py-3 rounded-full
+           font-medium text-sm bg-md-primary text-md-on-primary
+           hover:brightness-110 active:brightness-90
+           transition-all duration-200 shadow-md md-state-layer md-focus-ring;
+  }
+
+  /* MD3 Outlined Button */
+  .md3-btn-outlined {
+    @apply flex items-center justify-center gap-2 px-6 py-3 rounded-full
+           font-medium text-sm border border-md-outline text-md-primary
+           hover:bg-md-primary/8 active:bg-md-primary/12
+           transition-all duration-200 md-state-layer md-focus-ring;
+  }
+
+  /* MD3 Text Button */
+  .md3-btn-text {
+    @apply flex items-center gap-2 px-4 py-2.5 rounded-full
+           font-medium text-sm text-md-primary
+           hover:bg-md-primary/8 active:bg-md-primary/12
+           transition-all duration-200 md-state-layer md-focus-ring;
+  }
+
+  /* MD3 Tonal Button */
+  .md3-btn-tonal {
+    @apply flex items-center justify-center gap-2 px-6 py-3 rounded-full
+           font-medium text-sm bg-md-secondary-container text-md-on-secondary-container
+           hover:brightness-105 active:brightness-95
+           transition-all duration-200 shadow-sm md-state-layer md-focus-ring;
+  }
+
+  /* MD3 FAB (Floating Action Button) */
+  .md3-fab {
+    @apply flex items-center justify-center gap-3 px-5 py-3.5 rounded-[1rem]
+           bg-md-primary-container text-md-on-primary-container
+           font-semibold shadow-2xl hover:shadow-xl active:shadow-md
+           md-elevation-3 transition-all duration-200 md-state-layer md-focus-ring;
+  }
+
+  /* MD3 Card (Filled) */
+  .md3-card {
+    @apply bg-md-surface-container rounded-[1.5rem] p-6
+           md-elevation-1 transition-all duration-200;
+  }
+
+  /* MD3 Card (Outlined) */
+  .md3-card-outlined {
+    @apply bg-md-surface-low rounded-[1.5rem] p-6
+           border border-md-outline-variant/30 transition-all duration-200;
+  }
+
+  /* MD3 Chip */
+  .md3-chip {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm
+           font-medium bg-md-surface-container border border-md-outline-variant/30
+           text-md-on-surface-variant hover:bg-md-surface-high
+           transition-all duration-150 cursor-default md-state-layer;
+  }
+
+  /* MD3 Input Field (Outlined) */
+  .md3-input {
+    @apply w-full bg-transparent border border-md-outline-variant/50
+           rounded-xl px-4 py-3 text-sm text-md-on-surface outline-none
+           focus:border-md-primary focus:ring-2 focus:ring-md-primary/20
+           transition-all duration-200;
+  }
+
+  /* MD3 Navigation Rail Item */
+  .md3-nav-item {
+    @apply relative flex items-center gap-4 px-4 py-3 rounded-full
+           font-medium text-sm text-md-on-surface-variant
+           hover:bg-md-surface-container transition-all duration-200
+           md-state-layer md-focus-ring;
+  }
+  .md3-nav-item.active {
+    @apply bg-md-secondary-container text-md-on-secondary-container;
+  }
+
+  /* MD3 Surface tones */
+  .md-surface-tonal-1 { background-color: var(--md-elevation-tint-1); }
+  .md-surface-tonal-2 { background-color: var(--md-elevation-tint-2); }
+  .md-surface-tonal-3 { background-color: var(--md-elevation-tint-3); }
+}
+
+/* ─── PHASE 3: SPLASH + TOAST + INTERACTION ANIMATIONS ──────────────────── */
+@layer base {
+  /* Gemini fluid color morph for splash orbs */
+  @keyframes gemini-morph {
+    0%, 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+    25%       { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
+    50%       { border-radius: 50% 60% 30% 60% / 30% 40% 70% 50%; }
+    75%       { border-radius: 60% 30% 60% 30% / 70% 60% 40% 60%; }
+  }
+
+  /* Toast banner slide-in (from right) */
+  @keyframes toast-slide-in {
+    from { opacity: 0; transform: translateX(60px) scale(0.92); }
+    to   { opacity: 1; transform: translateX(0)    scale(1);    }
+  }
+
+  /* Toast banner slide-out (to right) */
+  @keyframes toast-slide-out {
+    from { opacity: 1; transform: translateX(0) scale(1); }
+    to   { opacity: 0; transform: translateX(60px) scale(0.85); }
+  }
+
+  /* MD3 Tab indicator slide */
+  @keyframes tab-indicator {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+  }
+
+  /* Progress bar shimmer */
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position:  200% 0; }
+  }
+
+  /* Snippet overlay backdrop */
+  .snippet-overlay-backdrop {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* PDF Surgeon drag handle cursor */
+  [data-drag-handle] {
+    cursor: grab;
+  }
+  [data-drag-handle]:active {
+    cursor: grabbing;
+  }
+
+  /* MD3 Progress bar with shimmer */
+  .md3-progress-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--md-sys-color-primary) 0%,
+      rgba(168, 199, 250, 0.6) 50%,
+      var(--md-sys-color-primary) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite linear;
+  }
+
+  /* Floating pill entrance animation */
+  @keyframes pill-up {
+    from { opacity: 0; transform: translate(-50%, 20px) scale(0.9); }
+    to   { opacity: 1; transform: translate(-50%, 0)    scale(1);   }
+  }
+
+  /* MD3 Chip hover state */
+  .md3-chip:hover {
+    background-color: var(--md-sys-color-surface-container-high);
+  }
+
+  /* Global — smoother all-elements transition for theme changes */
+  *, *::before, *::after {
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* Ensure select elements use system font on Windows */
+  select {
+    font-family: 'Google Sans', 'Roboto', 'Inter', system-ui, sans-serif;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Google Material Design 3 — Dynamic Accent Overrides (Outside layers to prevent JIT pruning)
+   ──────────────────────────────────────────────────────────────────────────── */
+/* Purple Accent */
+:root.accent-purple {
+  --md-sys-color-primary: #8a3ffc;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #ebd3ff;
+  --md-sys-color-on-primary-container: #330066;
+  --md-sys-color-secondary: #6b3fa0;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #eddcff;
+  --md-sys-color-on-secondary-container: #27005d;
+  --md-sys-color-tertiary: #7d5260;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #ffd8e4;
+  --md-sys-color-on-tertiary-container: #31111d;
+}
+:root.dark.accent-purple {
+  --md-sys-color-primary: #d4bbff;
+  --md-sys-color-on-primary: #381e72;
+  --md-sys-color-primary-container: #4f378b;
+  --md-sys-color-on-primary-container: #eaddff;
+  --md-sys-color-secondary: #ccc2dc;
+  --md-sys-color-on-secondary: #332d41;
+  --md-sys-color-secondary-container: #4a4458;
+  --md-sys-color-on-secondary-container: #e8def8;
+  --md-sys-color-tertiary: #efb8c8;
+  --md-sys-color-on-tertiary: #492532;
+  --md-sys-color-tertiary-container: #633b48;
+  --md-sys-color-on-tertiary-container: #ffd8e4;
+}
+
+/* Green Accent */
+:root.accent-green {
+  --md-sys-color-primary: #386a20;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #b7f397;
+  --md-sys-color-on-primary-container: #042100;
+  --md-sys-color-secondary: #55624c;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #d9e7cb;
+  --md-sys-color-on-secondary-container: #131f0d;
+  --md-sys-color-tertiary: #19686a;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #a8eff0;
+  --md-sys-color-on-tertiary-container: #002021;
+}
+:root.dark.accent-green {
+  --md-sys-color-primary: #9cd67d;
+  --md-sys-color-on-primary: #0c3900;
+  --md-sys-color-primary-container: #205107;
+  --md-sys-color-on-primary-container: #b7f397;
+  --md-sys-color-secondary: #bdcbb0;
+  --md-sys-color-on-secondary: #283321;
+  --md-sys-color-secondary-container: #3e4a36;
+  --md-sys-color-on-secondary-container: #d9e7cb;
+  --md-sys-color-tertiary: #8ad2d3;
+  --md-sys-color-on-tertiary: #003738;
+  --md-sys-color-tertiary-container: #004f50;
+  --md-sys-color-on-tertiary-container: #a8eff0;
+}
+
+/* Red Accent */
+:root.accent-red {
+  --md-sys-color-primary: #bc1e33;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #ffdad9;
+  --md-sys-color-on-primary-container: #41000a;
+  --md-sys-color-secondary: #775656;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #ffdad9;
+  --md-sys-color-on-secondary-container: #2c1516;
+  --md-sys-color-tertiary: #7b5734;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #ffdcbe;
+  --md-sys-color-on-tertiary-container: #2c1600;
+}
+:root.dark.accent-red {
+  --md-sys-color-primary: #ffb3b4;
+  --md-sys-color-on-primary: #680016;
+  --md-sys-color-primary-container: #920023;
+  --md-sys-color-on-primary-container: #ffdad9;
+  --md-sys-color-secondary: #e6bdbc;
+  --md-sys-color-on-secondary: #44292a;
+  --md-sys-color-secondary-container: #5d3f3f;
+  --md-sys-color-on-secondary-container: #ffdad9;
+  --md-sys-color-tertiary: #edbe92;
+  --md-sys-color-on-tertiary: #462a0b;
+  --md-sys-color-tertiary-container: #60401f;
+  --md-sys-color-on-tertiary-container: #ffdcbe;
+}
+
+/* Orange Accent */
+:root.accent-orange {
+  --md-sys-color-primary: #8b5000;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #ffdcbe;
+  --md-sys-color-on-primary-container: #2c1600;
+  --md-sys-color-secondary: #725b46;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #fee0c4;
+  --md-sys-color-on-secondary-container: #291807;
+  --md-sys-color-tertiary: #5b623b;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #e0e8b5;
+  --md-sys-color-on-tertiary-container: #191e02;
+}
+:root.dark.accent-orange {
+  --md-sys-color-primary: #ffb86a;
+  --md-sys-color-on-primary: #4a2800;
+  --md-sys-color-primary-container: #6a3c00;
+  --md-sys-color-on-primary-container: #ffdcbe;
+  --md-sys-color-secondary: #e1c4ab;
+  --md-sys-color-on-secondary: #402d1a;
+  --md-sys-color-secondary-container: #59432f;
+  --md-sys-color-on-secondary-container: #fee0c4;
+  --md-sys-color-tertiary: #c4cc9b;
+  --md-sys-color-on-tertiary: #2d3311;
+  --md-sys-color-tertiary-container: #434a25;
+  --md-sys-color-on-tertiary-container: #e0e8b5;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Google Material Design 3 — Sparkles Animation (Native CSS to prevent JS interpolation crash)
+   ──────────────────────────────────────────────────────────────────────────── */
+@keyframes sparkles-cycle {
+  0%, 100% {
+    color: var(--md-sys-color-primary);
+  }
+  33% {
+    color: var(--md-sys-color-tertiary);
+  }
+  66% {
+    color: var(--md-sys-color-secondary);
+  }
+}
+
+@keyframes sparkles-rotate {
+  0% { transform: rotate(0deg); }
+  5% { transform: rotate(15deg); }
+  10% { transform: rotate(-10deg); }
+  15% { transform: rotate(5deg); }
+  20%, 100% { transform: rotate(0deg); }
+}
+
+.animate-sparkles {
+  animation: sparkles-cycle 6s linear infinite, sparkles-rotate 5.5s ease-in-out infinite;
+}
+

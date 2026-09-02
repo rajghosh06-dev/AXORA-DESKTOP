@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Axora.Desktop.Views.MobileLinkPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Grid Padding="24,6,24,24" ColumnSpacing="24">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left: Instant Pairing QR Code & P2P Engine Status -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16">
+
+                <!-- Connection Status Badge -->
+                <Border CornerRadius="12" Padding="16,12"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Width="10" Height="10" CornerRadius="5"
+                                Background="#4CAF50" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock Text="P2P Background Engine Active" FontWeight="SemiBold" FontSize="13"/>
+                            <TextBlock Text="mDNS `_axora._tcp.local` broadcasting" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- High-Contrast QR Code Card (FEAT-3) -->
+                <Border CornerRadius="16"
+                        Background="White"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        Padding="16"
+                        Width="280" Height="280"
+                        HorizontalAlignment="Center">
+                    <Grid>
+                        <!-- QR Code Bitmap -->
+                        <Image Source="{Binding ViewModel.QrCodeBitmap}"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Width="240" Height="240"/>
+
+                        <!-- Center Axora Badge Overlay -->
+                        <Border Width="44" Height="44" CornerRadius="22"
+                                Background="#5B7DE8"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                BorderBrush="White" BorderThickness="3">
+                            <FontIcon Glyph="&#xE8EA;" FontSize="18" Foreground="White"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <TextBlock Text="Open Axora Mobile → Tap Mobile Link → Scan this QR code to establish zero-cloud encrypted peer link."
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           HorizontalAlignment="Center"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           Opacity="0.7"/>
+
+                <Button Content="Regenerate QR Token"
+                        Command="{Binding ViewModel.RestartServerCommand}"
+                        HorizontalAlignment="Center"/>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Right: Connected Devices & Bi-directional QuickDrop Hub -->
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="20">
+
+                <!-- Paired Devices Panel -->
+                <Border CornerRadius="12" Padding="20"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Paired Mobile Devices" FontWeight="SemiBold" FontSize="14"/>
+
+                        <ListView ItemsSource="{Binding ViewModel.PairedDevices}"
+                                  SelectionMode="None"
+                                  Padding="0">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="8" Padding="12,10" Margin="0,4"
+                                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1">
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="36" Height="36" CornerRadius="18"
+                                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE8EA;" FontSize="18"
+                                                          Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"/>
+                                                <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                                    <Run Text="{Binding IpAddress}"/>
+                                                    <Run Text=" · Port "/>
+                                                    <Run Text="{Binding Port}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                            <Button Grid.Column="2" Content="Disconnect"
+                                                    Click="Disconnect_Click" Tag="{Binding}"
+                                                    VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </Border>
+
+                <!-- Push File to Mobile Dropzone -->
+                <Border CornerRadius="14" Padding="20"
+                        BorderThickness="2"
+                        BorderBrush="{ThemeResource AccentControlElevationBorderBrush}"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        AllowDrop="True"
+                        DragOver="DropZone_DragOver"
+                        Drop="DropZone_Drop">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE898;" FontSize="32"
+                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                  VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="Push File to Paired Phone" FontWeight="SemiBold" FontSize="13"/>
+                            <TextBlock Text="Drop any document or image here to stream wirelessly over AES-256-GCM."
+                                       Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6"/>
+                            <TextBlock Text="{Binding ViewModel.TransferFeedback}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="#4CAF50" FontWeight="SemiBold"/>
+                        </StackPanel>
+                        <Button Grid.Column="2" Content="Browse &amp; Send" Click="BrowsePush_Click"
+                                Style="{StaticResource AccentButtonStyle}"
+                                VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+
+                <!-- Received Files Feed -->
+                <Border CornerRadius="12" Padding="20"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Received QuickDrop Files" FontWeight="SemiBold" FontSize="14"/>
+
+                        <ListView ItemsSource="{Binding ViewModel.ReceivedFiles}"
+                                  SelectionMode="None"
+                                  Padding="0">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="8,8" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Glyph="&#xE8A5;" FontSize="20" VerticalAlignment="Center"
+                                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" FontSize="13"/>
+                                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                                <Run Text="{Binding SourceDeviceName}"/>
+                                                <Run Text=" · "/>
+                                                <Run Text="{Binding FormattedSize}"/>
+                                                <Run Text=" · "/>
+                                                <Run Text="{Binding FormattedSpeed}"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{Binding Status}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="#4CAF50" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+    </Grid>
+</Page>

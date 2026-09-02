@@ -1,0 +1,99 @@
+# ==============================================================================
+# AXORA DESKTOP — ROOT .GITIGNORE
+# ==============================================================================
+
+# ── Node.js & Vite (MaterialUI Frontend) ──────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vite/
+.eslintcache
+
+# ── Rust & Cargo (MaterialUI Backend) ─────────────────────────────────────────
+target/
+src-tauri/target/
+**/*.rs.bk
+*.pdb
+
+# ── .NET & Visual Studio (WinUI Application) ───────────────────────────────────
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+.vs/
+*.user
+*.userosmat
+*.suo
+*.userprefs
+*.ide/
+*.DotSettings.user
+*.binlog
+*.log
+*.tmp
+
+# Pre-existing diagnostic build logs
+build_log.txt
+diagbuild.log
+fresh_build.log
+startup.log
+build.binlog
+build.log
+
+# ── Package & Bundle Caches ───────────────────────────────────────────────────
+*.nupkg
+*.snupkg
+*.appx
+*.msix
+*.msixbundle
+*.appxbundle
+_pkg/
+packages/
+!packages/repositories.config
+AppPackages/
+BundleArtifacts/
+PackageUpload/
+
+# ── Security, Secrets & Certificates ──────────────────────────────────────────
+*.pfx
+*.p12
+*.cer
+*.crt
+*.pem
+*.key
+*.pub
+*.token
+.env
+.env.*
+!.env.example
+secrets.json
+appsettings.Development.json
+appsettings.Local.json
+
+# ── QA Evidence & Transient Diagnostics ───────────────────────────────────────
+docs/qa/
+qa-evidence/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+screenshots/
+*.dump
+*.dmp
+
+# ── Legacy Subproject Agent Run Records (Preserved locally, excluded from git) ─
+Axora-Desktop-WinUI/.agents/
+
+# ── OS Generated Files ────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+*.swp
+*.swo
+*~

@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Axora.Desktop.Views.CompressorPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Grid Padding="24,6,24,24" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Header & Actions -->
+        <Border Grid.Row="0" CornerRadius="12" Padding="16,12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="Intelligent Multi-Profile Compressor · Deflate &amp; Raster Optimization"
+                               FontWeight="SemiBold" FontSize="13"/>
+                    <TextBlock Text="{Binding ViewModel.StatusMessage}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Open Export Folder" Command="{Binding ViewModel.OpenOutputFolderCommand}"/>
+                    <Button Content="Clear Queue" Command="{Binding ViewModel.ClearQueueCommand}"/>
+                    <Button Content="Start Compression"
+                            Command="{Binding ViewModel.StartCompressionCommand}"
+                            Style="{StaticResource AccentButtonStyle}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main 2-Column Split Workspace -->
+        <Grid Grid.Row="1" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="380"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: Dropzone & Profile Controls -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16">
+
+                    <!-- Drop Target -->
+                    <Border CornerRadius="14" Padding="24"
+                            MinHeight="160"
+                            BorderThickness="2"
+                            BorderBrush="{ThemeResource AccentControlElevationBorderBrush}"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            AllowDrop="True"
+                            DragOver="DropZone_DragOver"
+                            Drop="DropZone_Drop">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+                            <FontIcon Glyph="&#xE8B7;" FontSize="36"
+                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                            <TextBlock Text="Drop PDFs or Office Docs Here"
+                                       FontWeight="SemiBold" FontSize="14"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Supports PDF, DOCX, PPTX, XLSX, and Images"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       HorizontalAlignment="Center" Opacity="0.6"/>
+                            <Button Content="Browse Documents" Click="BrowseDocs_Click"
+                                    HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Compression Profile Selector -->
+                    <Border CornerRadius="12" Padding="18"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Spacing="14">
+                            <TextBlock Text="Compression Profile" FontWeight="SemiBold" FontSize="13"/>
+
+                            <ComboBox Header="Target Optimization Strategy"
+                                      SelectedIndex="{Binding ViewModel.SelectedProfileIndex, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Low Profile (Lossless Metadata Strip)"/>
+                                <ComboBoxItem Content="Medium Profile (Balanced 150 DPI)"/>
+                                <ComboBoxItem Content="High Profile (Max Compression 72 DPI)"/>
+                            </ComboBox>
+
+                            <!-- Live Telemetry KPI Cards -->
+                            <Grid ColumnSpacing="10" Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Border Grid.Column="0" CornerRadius="8" Padding="12"
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="Total Space Saved" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7"/>
+                                        <TextBlock Text="{Binding ViewModel.TotalSavedFormatted}"
+                                                   FontWeight="Bold" FontSize="15" Foreground="#4CAF50"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="1" CornerRadius="8" Padding="12"
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="Reduction Ratio" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.7"/>
+                                        <TextBlock Text="{Binding ViewModel.CompressionRatioFormatted}"
+                                                   FontWeight="Bold" FontSize="15" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right: Queue & Side-by-Side Space Analytics -->
+            <Border Grid.Column="1" CornerRadius="14" Padding="20"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                <Grid RowSpacing="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Progress Header -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Compression File Queue" FontWeight="SemiBold" FontSize="14"/>
+                        <ProgressBar Value="{Binding ViewModel.BatchProgress}"
+                                     Maximum="100" CornerRadius="4" Height="6"/>
+                    </StackPanel>
+
+                    <!-- Queue Content / Empty State -->
+                    <Grid Grid.Row="1">
+                        <!-- Empty State -->
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8" Padding="24"
+                                    Visibility="{Binding ViewModel.HasItems, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            <FontIcon Glyph="&#xE8B7;" FontSize="36"
+                                      Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                      HorizontalAlignment="Center"/>
+                            <TextBlock Text="No Files in Queue"
+                                       FontWeight="SemiBold" FontSize="14"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="Start selecting files or drop documents to optimize and compress them."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       HorizontalAlignment="Center" TextAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Queue ListView -->
+                        <ListView ItemsSource="{Binding ViewModel.Queue}"
+                                  SelectionMode="None"
+                                  Padding="0"
+                                  Visibility="{Binding ViewModel.HasItems, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="8,8" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Glyph="&#xE8B7;" FontSize="18" VerticalAlignment="Center"
+                                                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" FontSize="13"/>
+                                            <TextBlock Text="{Binding FormattedOriginalSize}"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{Binding FormattedOutputSize}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <Border Grid.Column="3" CornerRadius="10" Padding="6,2"
+                                                Background="#1A4CAF50" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding FormattedSpaceSaved}"
+                                                       FontSize="11" Foreground="#4CAF50" FontWeight="SemiBold"/>
+                                        </Border>
+                                        <TextBlock Grid.Column="4" Text="{Binding Status}"
+                                                   FontWeight="SemiBold" FontSize="12"
+                                                   VerticalAlignment="Center" Margin="8,0,0,0"
+                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                </Grid>
+            </Border>
+
+        </Grid>
+    </Grid>
+</Page>

@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "hooks": [
+    {
+      "name": "pre-build-process-guard",
+      "description": "Ensures no running Axora instances lock build output directories before compilation",
+      "trigger": "pre-build",
+      "command": "powershell -ExecutionPolicy Bypass -File ./scripts/qa/pre-build-clean.ps1",
+      "enabled": true
+    }
+  ]
+}

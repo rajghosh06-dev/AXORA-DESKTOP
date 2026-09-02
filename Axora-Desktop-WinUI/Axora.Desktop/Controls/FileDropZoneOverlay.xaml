@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Axora.Desktop.Controls.FileDropZoneOverlay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    IsHitTestVisible="False">
+
+    <!-- Full-window overlay, no hit-test so drop events pass through to root -->
+    <Grid>
+        <!-- Dim background -->
+        <Rectangle Fill="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}"
+                   Opacity="0.75"/>
+
+        <!-- Center drop target -->
+        <Border CornerRadius="24"
+                Padding="48,36"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderThickness="3"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MinWidth="360">
+            <Border.BorderBrush>
+                <SolidColorBrush Color="{ThemeResource SystemAccentColor}"/>
+            </Border.BorderBrush>
+            <StackPanel Spacing="16" HorizontalAlignment="Center">
+                <FontIcon Glyph="&#xE896;"
+                          FontSize="56"
+                          Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                          HorizontalAlignment="Center"/>
+                <TextBlock Text="Drop files here"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           HorizontalAlignment="Center"/>
+                <TextBlock Text="Release to process with Scholar Kit or Vault"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           HorizontalAlignment="Center"
+                           Opacity="0.6"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

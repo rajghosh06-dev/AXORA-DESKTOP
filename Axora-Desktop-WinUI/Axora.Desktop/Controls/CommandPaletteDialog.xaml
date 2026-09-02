@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Axora.Desktop.Controls.CommandPaletteDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Visibility="Collapsed">
+
+    <!-- Full-screen dim overlay -->
+    <Grid>
+        <Rectangle x:Name="DimOverlay"
+                   Fill="{ThemeResource ControlOnImageFillColorDefaultBrush}"
+                   Opacity="0.5"/>
+
+        <!-- Palette panel -->
+        <Border MaxWidth="580"
+                MaxHeight="480"
+                CornerRadius="16"
+                Padding="12"
+                VerticalAlignment="Top"
+                Margin="0,80,0,0"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                HorizontalAlignment="Center">
+
+            <StackPanel Spacing="8">
+                <!-- Search box -->
+                <AutoSuggestBox
+                    x:Name="SearchBox"
+                    PlaceholderText="Type a command…"
+                    QueryIcon="Find"
+                    HorizontalAlignment="Stretch"
+                    FontSize="16"/>
+
+                <!-- Command results -->
+                <ListView x:Name="ResultsList"
+                          ItemsSource="{Binding FilteredCommands}"
+                          SelectionMode="Single"
+                          IsItemClickEnabled="True"
+                          MaxHeight="360">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="8,6" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE76C;" FontSize="14" Opacity="0.5" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <TextBlock Text="Esc to dismiss · ↑↓ to navigate · Enter to execute"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           HorizontalAlignment="Center"
+                           Opacity="0.4"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

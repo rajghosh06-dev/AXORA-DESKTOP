@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 
+  Axora Desktop — Windows 11 Explorer Modern Context Menu & Sparse Package Manifest Extension
+  Target: Windows 11 (build 22000+) Sparse / External Location Package
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+  IgnorableNamespaces="uap uap10 desktop4 desktop5">
+
+  <Identity
+    Name="Axora.Desktop"
+    Publisher="CN=AxoraSecurityPlatform"
+    Version="1.0.0.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Axora Desktop</DisplayName>
+    <PublisherDisplayName>Axora Security Platform</PublisherDisplayName>
+    <Logo>Assets\AppIcon.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Applications>
+    <Application Id="AxoraDesktopApp" Executable="Axora.Desktop.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Axora Desktop"
+        Description="Offline Secure Productivity &amp; Security Suite for Windows 11"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\AppIcon.png"
+        Square44x44Logo="Assets\AppIcon.png" />
+
+      <Extensions>
+        <!-- Windows 11 Modern Explorer Right-Click Context Menu Verbs -->
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <!-- All Files: Send with QuickDrop & Encrypt with Axora Vault -->
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb Id="AxoraQuickDropSend" Clsid="4C17DE32-9F0A-4F8A-9A2E-8E5A8D56A401" />
+              <desktop5:Verb Id="AxoraVaultEncrypt" Clsid="4C17DE32-9F0A-4F8A-9A2E-8E5A8D56A402" />
+              <desktop5:Verb Id="AxoraIntelligentCompress" Clsid="4C17DE32-9F0A-4F8A-9A2E-8E5A8D56A403" />
+            </desktop5:ItemType>
+
+            <!-- PDF Files: Scholar Kit OCR & Redaction Studio -->
+            <desktop5:ItemType Type=".pdf">
+              <desktop5:Verb Id="AxoraScholarKitOcr" Clsid="4C17DE32-9F0A-4F8A-9A2E-8E5A8D56A404" />
+              <desktop5:Verb Id="AxoraPdfRedactStudio" Clsid="4C17DE32-9F0A-4F8A-9A2E-8E5A8D56A405" />
+            </desktop5:ItemType>
+
+            <!-- Vault Archive Files: Decrypt -->
+            <desktop5:ItemType Type=".axvault">
+              <desktop5:Verb Id="AxoraVaultDecrypt" Clsid="4C17DE32-9F0A-4F8A-9A2E-8E5A8D56A406" />
+            </desktop5:ItemType>
+
+            <!-- Directory Background & Folder Ingestion -->
+            <desktop5:ItemType Type="Directory">
+              <desktop5:Verb Id="AxoraBatchImageFolder" Clsid="4C17DE32-9F0A-4F8A-9A2E-8E5A8D56A407" />
+              <desktop5:Verb Id="AxoraFolderVaultEncrypt" Clsid="4C17DE32-9F0A-4F8A-9A2E-8E5A8D56A408" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>

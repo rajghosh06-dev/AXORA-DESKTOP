@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Axora.Desktop.Controls.FloatingDropWidget"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Border x:Name="RootCard"
+            CornerRadius="16"
+            Padding="16"
+            Width="300"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource AccentControlElevationBorderBrush}"
+            BorderThickness="2"
+            AllowDrop="True"
+            DragOver="OnDragOver"
+            DragLeave="OnDragLeave"
+            Drop="OnDrop">
+
+        <Grid RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header with Icon and Target Selector -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <FontIcon Glyph="&#xE8EA;" FontSize="16"
+                          Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                          VerticalAlignment="Center"/>
+
+                <TextBlock Grid.Column="1" Text="QuickDrop Widget"
+                           FontWeight="SemiBold" FontSize="13"
+                           Margin="8,0,0,0" VerticalAlignment="Center"/>
+
+                <Button Grid.Column="2" Click="OnCloseClicked"
+                        Style="{StaticResource SubtleButtonStyle}" Padding="4">
+                    <FontIcon Glyph="&#xE711;" FontSize="11"/>
+                </Button>
+            </Grid>
+
+            <!-- Drop Zone Visual Area -->
+            <Border Grid.Row="1" CornerRadius="10" Padding="14"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                <StackPanel HorizontalAlignment="Center" Spacing="6">
+                    <FontIcon x:Name="DropIcon" Glyph="&#xE896;" FontSize="24"
+                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                    <TextBlock x:Name="DropLabel" Text="Drag &amp; Drop Files Here"
+                               FontWeight="SemiBold" FontSize="12"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="DropSubLabel" Text="Auto-routes to selected engine"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               HorizontalAlignment="Center" Opacity="0.7"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Target Module Selector -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <ComboBox x:Name="TargetModuleCombo"
+                          SelectedIndex="0"
+                          HorizontalAlignment="Stretch"
+                          FontSize="12">
+                    <ComboBoxItem Content="Mobile QuickDrop (P2P)"/>
+                    <ComboBoxItem Content="Encrypted Vault (.axvault)"/>
+                    <ComboBoxItem Content="Intelligent Compressor"/>
+                    <ComboBoxItem Content="Scholar Kit OCR"/>
+                </ComboBox>
+
+                <ProgressRing x:Name="ActionProgress" Grid.Column="1"
+                              IsActive="False" Width="16" Height="16"
+                              Margin="8,0,0,0" VerticalAlignment="Center"/>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

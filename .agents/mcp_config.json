@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/mcp-config.json",
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-chrome-devtools"],
+      "env": {},
+      "description": "Chrome DevTools MCP server for DOM inspection, layout debugging, and visual testing of Tauri WebView2 / Vite frontend."
+    }
+  }
+}

@@ -1,0 +1,45 @@
+Windows Registry Editor Version 5.00
+
+; ==============================================================================
+; Axora Desktop — Windows 11 Shell Context Menu Verbs (Native Unpackaged Win32)
+; Adds high-priority right-click context menu options in Windows Explorer
+; ==============================================================================
+
+; --- All Files: Send via Mobile QuickDrop ---
+[HKEY_CLASSES_ROOT\*\shell\AxoraQuickDrop]
+@="Send to Axora QuickDrop"
+"Icon"="\"%LOCALAPPDATA%\\Axora\\Axora.Desktop.exe\",0"
+
+[HKEY_CLASSES_ROOT\*\shell\AxoraQuickDrop\command]
+@="\"%LOCALAPPDATA%\\Axora\\Axora.Desktop.exe\" --quickdrop \"%1\""
+
+; --- All Files: Encrypt with Axora Vault ---
+[HKEY_CLASSES_ROOT\*\shell\AxoraVaultEncrypt]
+@="Encrypt with Axora Vault"
+"Icon"="\"%LOCALAPPDATA%\\Axora\\Axora.Desktop.exe\",0"
+
+[HKEY_CLASSES_ROOT\*\shell\AxoraVaultEncrypt\command]
+@="\"%LOCALAPPDATA%\\Axora\\Axora.Desktop.exe\" --vault-encrypt \"%1\""
+
+; --- All Files: Compress with Axora ---
+[HKEY_CLASSES_ROOT\*\shell\AxoraCompress]
+@="Compress with Axora Intelligent Compressor"
+"Icon"="\"%LOCALAPPDATA%\\Axora\\Axora.Desktop.exe\",0"
+
+[HKEY_CLASSES_ROOT\*\shell\AxoraCompress\command]
+@="\"%LOCALAPPDATA%\\Axora\\Axora.Desktop.exe\" --compress \"%1\""
+
+; --- Vault Archives: Decrypt ---
+[HKEY_CLASSES_ROOT\.axvault]
+@="Axora.Vault.Archive"
+
+[HKEY_CLASSES_ROOT\Axora.Vault.Archive\shell\open\command]
+@="\"%LOCALAPPDATA%\\Axora\\Axora.Desktop.exe\" --vault-decrypt \"%1\""
+
+; --- Folders: Process Images / Compress ---
+[HKEY_CLASSES_ROOT\Directory\shell\AxoraBatchImage]
+@="Process Images with Axora Batch Studio"
+"Icon"="\"%LOCALAPPDATA%\\Axora\\Axora.Desktop.exe\",0"
+
+[HKEY_CLASSES_ROOT\Directory\shell\AxoraBatchImage\command]
+@="\"%LOCALAPPDATA%\\Axora\\Axora.Desktop.exe\" --batch-image \"%1\""

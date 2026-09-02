@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Axora.Desktop.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Grid>
+        <ScrollViewer Padding="24,6,24,96">
+            <StackPanel MaxWidth="680" Spacing="16">
+
+                <!-- App Theme -->
+                <TextBlock Text="Appearance &amp; Personalization" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+
+                <Border CornerRadius="12" Padding="20"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="16">
+                        <!-- Theme -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="App Theme" FontWeight="SemiBold"/>
+                                <TextBlock Text="Choose between system default, light, or dark mode."
+                                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6"/>
+                            </StackPanel>
+                            <ComboBox Grid.Column="1"
+                                      SelectedIndex="{Binding ViewModel.SelectedThemeIndex, Mode=TwoWay}"
+                                      MinWidth="140">
+                                <ComboBoxItem Content="System Default"/>
+                                <ComboBoxItem Content="Light"/>
+                                <ComboBoxItem Content="Dark"/>
+                            </ComboBox>
+                        </Grid>
+
+                        <MenuFlyoutSeparator/>
+
+                        <!-- Accent Color -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Accent Color" FontWeight="SemiBold"/>
+                                <TextBlock Text="Personalize the primary UI accent."
+                                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button Width="32" Height="32" CornerRadius="16"
+                                        Background="#5B7DE8" Click="Accent_Click" Tag="#5B7DE8" Padding="0"/>
+                                <Button Width="32" Height="32" CornerRadius="16"
+                                        Background="#7C4DFF" Click="Accent_Click" Tag="#7C4DFF" Padding="0"/>
+                                <Button Width="32" Height="32" CornerRadius="16"
+                                        Background="#00C853" Click="Accent_Click" Tag="#00C853" Padding="0"/>
+                                <Button Width="32" Height="32" CornerRadius="16"
+                                        Background="#FF6D00" Click="Accent_Click" Tag="#FF6D00" Padding="0"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Mobile Link & Background P2P Sync -->
+                <TextBlock Text="Mobile Link &amp; P2P Sync Network" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+
+                <Border CornerRadius="12" Padding="20"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Auto-Start P2P Engine on Launch" FontWeight="SemiBold"/>
+                                <TextBlock Text="Automatically initialize mDNS pairing and QuickDrop listener on application startup."
+                                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1"
+                                          IsOn="{Binding ViewModel.AutoStartP2pEngine, Mode=TwoWay}"
+                                          OnContent="Auto" OffContent="Manual"/>
+                        </Grid>
+
+                        <MenuFlyoutSeparator/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Background QuickDrop Listener" FontWeight="SemiBold"/>
+                                <TextBlock Text="Allow receiving files from paired mobile devices while running in the background."
+                                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1"
+                                          IsOn="{Binding ViewModel.BackgroundQuickDropListen, Mode=TwoWay}"
+                                          OnContent="Active" OffContent="Disabled"/>
+                        </Grid>
+
+                        <MenuFlyoutSeparator/>
+
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="140"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="P2P Server Port" FontWeight="SemiBold"/>
+                                <TextBlock Text="TCP port for encrypted WebSocket transfers."
+                                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6"/>
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Text="{Binding ViewModel.P2pPort, Mode=TwoWay}"
+                                     HorizontalAlignment="Stretch"/>
+                        </Grid>
+
+                        <MenuFlyoutSeparator/>
+
+                        <!-- Download Directory Selector -->
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="QuickDrop Downloads Directory" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding ViewModel.DownloadDirectory}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Browse Folder" Click="BrowseFolder_Click" VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Advanced Cryptographic Hardening (Argon2id) -->
+                <TextBlock Text="Advanced Cryptographic Hardening (Argon2id)" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+
+                <Border CornerRadius="12" Padding="20"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="16">
+                        <!-- Memory Allocation -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="220"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Key Derivation Memory (MB)" FontWeight="SemiBold"/>
+                                <TextBlock Text="RAM allocated to Argon2id hashing. Higher values defend against ASIC/GPU cracking."
+                                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Slider Minimum="16" Maximum="512" StepFrequency="16"
+                                        Value="{Binding ViewModel.Argon2MemoryMb, Mode=TwoWay}"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding ViewModel.Argon2MemoryMb, Mode=OneWay}"
+                                           VerticalAlignment="Center" FontWeight="SemiBold" Width="40"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <MenuFlyoutSeparator/>
+
+                        <!-- Iteration Passes -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="220"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Time Cost Iterations (Passes)" FontWeight="SemiBold"/>
+                                <TextBlock Text="Number of sequential computational rounds applied to the master key."
+                                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Slider Minimum="1" Maximum="10" StepFrequency="1"
+                                        Value="{Binding ViewModel.Argon2Iterations, Mode=TwoWay}"
+                                        Width="140" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding ViewModel.Argon2Iterations, Mode=OneWay}"
+                                           VerticalAlignment="Center" FontWeight="SemiBold" Width="40"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Privacy -->
+                <TextBlock Text="Privacy &amp; Local Compute" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+
+                <Border CornerRadius="12" Padding="20"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                    <StackPanel Spacing="16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="System Telemetry Polling" FontWeight="SemiBold"/>
+                                <TextBlock Text="Display CPU, RAM, and storage metrics on the Dashboard."
+                                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1"
+                                          IsOn="{Binding ViewModel.IsTelemetryEnabled, Mode=TwoWay}"
+                                          OnContent="Enabled" OffContent="Disabled"/>
+                        </Grid>
+
+                        <MenuFlyoutSeparator/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Zero-Cloud Guarantee" FontWeight="SemiBold"/>
+                                <TextBlock Text="All AI inference, OCR extraction, and encryption operations execute 100% locally."
+                                           Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <FontIcon Grid.Column="1" Glyph="&#xE72E;" FontSize="18" Foreground="#4CAF50" VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Save Bar -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding ViewModel.SaveStatus}"
+                               VerticalAlignment="Center" Foreground="#4CAF50" FontWeight="SemiBold" FontSize="13"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <Button Content="Reset Defaults" Command="{Binding ViewModel.ResetToDefaultsCommand}"/>
+                        <Button Content="Save Preferences" Command="{Binding ViewModel.SaveSettingsCommand}"
+                                Style="{StaticResource AccentButtonStyle}"/>
+                    </StackPanel>
+                </Grid>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Floating Save / Revert Pill (FEAT-6) -->
+        <Border Visibility="{Binding ViewModel.IsDirty, Converter={StaticResource BoolToVisibilityConverter}}"
+                HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,24"
+                CornerRadius="24" Padding="16,8"
+                Background="{ThemeResource LayerFillColorAltBrush}"
+                BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                BorderThickness="1"
+                Shadow="{ThemeResource Elevation16Shadow}"
+                Canvas.ZIndex="100">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE7BA;" FontSize="14" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="Unsaved changes" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Button Content="Revert" Command="{Binding ViewModel.RevertSettingsCommand}"
+                        Padding="12,4" CornerRadius="14" VerticalAlignment="Center"/>
+                <Button Content="Save Changes" Command="{Binding ViewModel.SaveSettingsCommand}"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Padding="14,4" CornerRadius="14" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>
