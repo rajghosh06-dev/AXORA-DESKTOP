@@ -30,6 +30,7 @@
                 <!-- Search box -->
                 <AutoSuggestBox
                     x:Name="SearchBox"
+                    AutomationProperties.Name="Command Palette Search"
                     PlaceholderText="Type a command…"
                     QueryIcon="Find"
                     HorizontalAlignment="Stretch"

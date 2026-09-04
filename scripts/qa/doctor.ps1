@@ -96,6 +96,10 @@ if ($foundMsBuild) {
 Write-Host "`n[5] Web & Rust Toolchains (MaterialUI):" -ForegroundColor Yellow
 $nodeCmd = Get-Command "node" -ErrorAction SilentlyContinue
 $npmCmd = Get-Command "npm" -ErrorAction SilentlyContinue
+
+if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue) -and (Test-Path "$env:USERPROFILE\.cargo\bin\cargo.exe")) {
+    $env:Path = "$env:USERPROFILE\.cargo\bin;" + $env:Path
+}
 $cargoCmd = Get-Command "cargo" -ErrorAction SilentlyContinue
 $rustcCmd = Get-Command "rustc" -ErrorAction SilentlyContinue
 
@@ -117,8 +121,22 @@ if ($cargoCmd -and $rustcCmd) {
     $BlockedCount++
 }
 
-# 6. Antigravity Customizations
-Write-Host "`n[6] Antigravity Workspace Integrity:" -ForegroundColor Yellow
+# 6. Windows SDK & Native C++ Toolchain (MaterialUI / Tauri)
+Write-Host "`n[6] Windows SDK & Native C++ Toolchain (MaterialUI):" -ForegroundColor Yellow
+$sdkK32 = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\Lib" -Filter "kernel32.lib" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "\\x64\\" } | Select-Object -First 1
+$sdkRc  = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "rc.exe" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "\\x64\\" } | Select-Object -First 1
+
+if ($sdkK32 -and $sdkRc) {
+    Write-Host "  Windows SDK: $($sdkK32.FullName)" -ForegroundColor Gray
+    Write-Host "  rc.exe:      $($sdkRc.FullName)" -ForegroundColor Gray
+    Write-Host "  [PASS] Windows SDK C++ libraries and resource compiler ready." -ForegroundColor Green
+} else {
+    Write-Host "  [BLOCKED] Windows SDK (kernel32.lib / rc.exe) missing. Native Rust/Tauri linking unavailable." -ForegroundColor Yellow
+    $BlockedCount++
+}
+
+# 7. Antigravity Customizations
+Write-Host "`n[7] Antigravity Workspace Integrity:" -ForegroundColor Yellow
 $agentsDir = Join-Path $WorkspaceRoot ".agents"
 $rulesCount = (Get-ChildItem -Path (Join-Path $agentsDir "rules") -Filter "*.md" -ErrorAction SilentlyContinue).Count
 $skillsCount = (Get-ChildItem -Path (Join-Path $agentsDir "skills") -Directory -ErrorAction SilentlyContinue).Count
@@ -136,8 +154,8 @@ if ($rulesCount -ge 6 -and $skillsCount -ge 6 -and $workflowsCount -ge 7) {
     Write-Host "  [WARN] Some Antigravity customizations appear missing or incomplete." -ForegroundColor Yellow
 }
 
-# 7. Locked Processes
-Write-Host "`n[7] Process Lock Check:" -ForegroundColor Yellow
+# 8. Locked Processes
+Write-Host "`n[8] Process Lock Check:" -ForegroundColor Yellow
 $lockedProcs = Get-Process -Name "Axora.Desktop*", "axora-desktop*" -ErrorAction SilentlyContinue
 if ($lockedProcs) {
     Write-Host "  [WARN] Active Axora process(es) detected: $($lockedProcs.Name -join ', ')" -ForegroundColor Yellow

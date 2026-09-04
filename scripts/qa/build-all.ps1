@@ -127,6 +127,14 @@ if ($Target -eq 'MaterialUI' -or $Target -eq 'All') {
     }
 
     # Check cargo
+    if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue) -and (Test-Path "$env:USERPROFILE\.cargo\bin\cargo.exe")) {
+        $env:Path = "$env:USERPROFILE\.cargo\bin;" + $env:Path
+    }
+    # Initialize Visual Studio Developer environment for MSVC / Windows SDK if needed
+    $devShell = "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\Launch-VsDevShell.ps1"
+    if (-not (Get-Command "cl.exe" -ErrorAction SilentlyContinue) -and (Test-Path $devShell)) {
+        & $devShell -Arch amd64 -HostArch amd64 | Out-Null
+    }
     $cargoCmd = Get-Command "cargo" -ErrorAction SilentlyContinue
     if ($cargoCmd) {
         $cargoToml = Join-Path $MatRoot "src-tauri\Cargo.toml"

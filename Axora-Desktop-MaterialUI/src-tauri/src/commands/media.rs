@@ -307,9 +307,10 @@ try {{
     let script_path = temp_dir.join(format!("axora_speech_transcribe_{}.ps1", rand_id));
     let _ = std::fs::write(&script_path, script);
 
-    let cmd_future = tokio::process::Command::new("powershell")
-        .args(&["-ExecutionPolicy", "Bypass", "-File", script_path.to_str().unwrap()])
-        .output();
+    let mut cmd = tokio::process::Command::new("powershell");
+    cmd.args(&["-ExecutionPolicy", "Bypass", "-File", script_path.to_str().unwrap()]);
+    cmd.kill_on_drop(true);
+    let cmd_future = cmd.output();
 
     let output_result = tokio::time::timeout(std::time::Duration::from_secs(4), cmd_future).await;
     let _ = std::fs::remove_file(&script_path);

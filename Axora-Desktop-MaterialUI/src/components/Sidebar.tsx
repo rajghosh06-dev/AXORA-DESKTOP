@@ -13,8 +13,9 @@ import {
   BookOpen,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "framer-motion";
+import { invoke } from "@tauri-apps/api/core";
+import logoImg from "../assets/logo-transparent.png";
 import { MdRipple } from "./MdRipple";
 import { X, CheckCircle2, Loader2 } from "lucide-react";
 
@@ -123,7 +124,7 @@ export default function Sidebar({ currentPage, setCurrentPage }: SidebarProps) {
                   }}
                 />
                 <img
-                  src="/src/assets/logo-transparent.png"
+                  src={logoImg}
                   alt="Axora"
                   className="w-8 h-8 object-contain drop-shadow-sm relative z-10 group-hover:rotate-[15deg] group-hover:scale-110 transition-all duration-500"
                 />

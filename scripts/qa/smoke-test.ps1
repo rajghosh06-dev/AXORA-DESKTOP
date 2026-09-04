@@ -85,8 +85,16 @@ if ($Target -eq 'WinUI') {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
 } elseif ($Target -eq 'MaterialUI') {
-    $MatExe = Join-Path $WorkspaceRoot "Axora-Desktop-MaterialUI\src-tauri\target\debug\axora-desktop.exe"
-    if (Test-Path $MatExe) {
+    $matCandidates = @(
+        (Join-Path $WorkspaceRoot "Axora-Desktop-MaterialUI\src-tauri\target\release\axora-desktop.exe"),
+        (Join-Path $WorkspaceRoot "Axora-Desktop-MaterialUI\src-tauri\target\debug\axora-desktop.exe")
+    )
+    $MatExe = $null
+    foreach ($cand in $matCandidates) {
+        if (Test-Path $cand) { $MatExe = $cand; break }
+    }
+
+    if ($MatExe) {
         Write-Host "Launching MaterialUI binary ($MatExe)..." -ForegroundColor Yellow
         $process = Start-Process -FilePath $MatExe -PassThru
         Start-Sleep -Seconds $DurationSeconds
@@ -98,7 +106,7 @@ if ($Target -eq 'WinUI') {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         }
     } else {
-        Write-Host "[BLOCKED] MaterialUI executable not found at $MatExe." -ForegroundColor Yellow
+        Write-Host "[BLOCKED] MaterialUI executable not found at candidate locations." -ForegroundColor Yellow
         Write-Host "Rust/Cargo and Node.js toolchains are required to build the native binary." -ForegroundColor Gray
         Write-Host "================================================================================" -ForegroundColor Cyan
         Write-Host "  SMOKE TEST BLOCKED: TARGET BINARY NOT FOUND" -ForegroundColor Yellow

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import logoImg from "../assets/logo-transparent.png";
 import {
   Sparkles, ArrowRight, Zap, ShieldCheck, FileType,
   ScanLine, Smartphone, Activity,
@@ -161,7 +162,7 @@ export default function Dashboard({ setCurrentPage }: { setCurrentPage: (page: s
             transition={{ type: "spring", stiffness: 400, damping: 20 }}
           >
             <img
-              src="/src/assets/logo-transparent.png"
+              src={logoImg}
               className="w-16 h-16 drop-shadow-md"
               alt="Axora"
             />

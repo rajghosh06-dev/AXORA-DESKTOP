@@ -28,6 +28,12 @@ This document tracks known defects, environment limitations, and architectural b
 - **Symptom**: Previously reported as unrouted due to `page: "CompatibilityModal"`.
 - **Audit Finding**: In reality, `Dashboard.tsx` (lines 128–134) intercepts `action.page === "CompatibilityModal"` and dispatches `new CustomEvent("open-compatibility-modal")`, which `Sidebar.tsx` (lines 71–75) listens to and opens `SystemInfoModal`. Verified functional as intended.
 
+### [RESOLVED] Issue M-02: `ToastNotification` Component Unmounted in `App.tsx` (P2)
+- **Location**: `Axora-Desktop-MaterialUI\src\App.tsx`
+- **Symptom**: Toast notifications dispatched via `toast.warning()`, `toast.error()`, or `toast.success()` updated the Zustand store but did not render visual notifications in the DOM.
+- **Root Cause**: `App.tsx` imported `ToastNotification` but did not mount `<ToastNotification />` in the JSX tree.
+- **Resolution**: Mounted `<ToastNotification />` inside `App.tsx` directly above the closing tag of the main layout. Verified with automated negative validation toast assertions in `test-materialui-product-flows.mjs`.
+
 ---
 
 ## 2. Active Application Defects
@@ -35,17 +41,19 @@ This document tracks known defects, environment limitations, and architectural b
 
 ---
 
-## 3. Host Environment Limitations
-
-### Limitation E-01: Missing Node.js and Rust Toolchains on Host (P3)
-- **Symptom**: Cannot recompile `Axora-Desktop-MaterialUI` frontend (`npm run build`) or Rust backend (`cargo check`) directly in this machine shell.
-- **Impact**: Pre-built web assets in `dist/` and intact source files are preserved, but incremental builds require installing Node.js (v18+) and Rustup.
+### [RESOLVED] Limitation E-01: MaterialUI Windows Toolchain Fully Installed & Verified (P3)
+- **Location**: `Axora-Desktop-MaterialUI`
+- **Previous Status**: Node.js, Cargo, and Windows SDK were missing on host.
+- **Resolution**: Host environment equipped with Node.js v26.8.1, npm 11.19.0, Rust/Cargo 1.98.1 (stable-x86_64-pc-windows-msvc), MSVC v143/v144 (14.51.36231), and Windows 11 SDK 10.0.26100.0. MaterialUI frontend (`npm run build`), Rust backend (`cargo check`), automated tests (`cargo test`: 15/15 passed), release packaging (`npx tauri build`: `axora-desktop.exe`), and runtime smoke launch verified operational.
 
 ---
 
+## 3. Host Environment Limitations
+*(Zero blocking host limitations remain. Both WinUI and MaterialUI toolchains are fully operational).*
+
 ## 4. Automation & Testing Enhancements
 
-### Enhancement A-01: Automated Visual UI Testing Framework (P4)
-- **Scope**: Layers 4 & 5 (Interactive & Visual UI Validation).
-- **Current State**: Automated logic stress testing is 100% verified (59/59 assertions). Visual validation currently relies on manual checklist evaluation (`docs/UI_QA_CONTRACT.md`).
-- **Future Plan**: Integrate FlaUI / Windows UI Automation test harness for automated end-to-end visual assertions.
+### [RESOLVED] Enhancement A-01: Automated Desktop UI Testing Framework (P4)
+- **Scope**: Layers 4 & 5 (Interactive, Product-Flow & Visual UI Validation).
+- **Resolution**: Implemented native Windows UI Automation (`UIAutomationClient`) and Edge WebView2 Chrome DevTools Protocol (CDP) test suites across both desktop implementations. 100/100 automated UI tests passing across shell navigation, adversarial stress, and product flows.
+- **Remaining Backlog**: Human verification for physical peripherals (WIA scanner device acquisition, Android 16 Wi-Fi Direct socket discovery) and formal screen reader auditory readout (Tier C).

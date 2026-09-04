@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { useThemeStore } from "../store/themeStore";
+import logoImg from "../assets/logo-transparent.png";
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -198,7 +199,7 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
                     }}
                   >
                     <img
-                      src="/src/assets/logo-transparent.png"
+                      src={logoImg}
                       className="w-14 h-14 drop-shadow-md"
                       alt="Axora"
                       style={{ imageRendering: "crisp-edges" }}

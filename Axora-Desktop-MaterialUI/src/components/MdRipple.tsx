@@ -16,6 +16,10 @@ interface MdRippleProps {
   color?: string;
   disabled?: boolean;
   title?: string;
+  role?: string;
+  tabIndex?: number;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  "aria-label"?: string;
 }
 
 /**
@@ -26,6 +30,7 @@ interface MdRippleProps {
  * - Scales to fill the full element
  * - Fades out with MD3 standard easing (cubic-bezier(0.4, 0, 0.2, 1))
  * - Duration: 600ms (MD3 long-2 slot)
+ * - Accessibility: Defaults to role="button" and tabIndex=0 when onClick is provided
  */
 export function MdRipple({
   children,
@@ -35,6 +40,10 @@ export function MdRipple({
   color = "currentColor",
   disabled = false,
   title,
+  role,
+  tabIndex,
+  onKeyDown,
+  "aria-label": ariaLabel,
 }: MdRippleProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rippleIdRef = useRef(0);
@@ -79,12 +88,25 @@ export function MdRipple({
     [disabled, onClick]
   );
 
+  const computedRole = role || (onClick ? "button" : undefined);
+  const computedTabIndex = tabIndex !== undefined ? tabIndex : (onClick && !disabled ? 0 : undefined);
+
   return (
     <div
       ref={containerRef}
+      role={computedRole}
+      tabIndex={computedTabIndex}
+      aria-label={ariaLabel}
       className={`relative overflow-hidden ${disabled ? "pointer-events-none" : "cursor-pointer"} ${className}`}
       style={style}
       onClick={handleClick}
+      onKeyDown={(e) => {
+        if (!disabled && onClick && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onClick(e as any);
+        }
+        onKeyDown?.(e);
+      }}
       title={title}
     >
       {children}

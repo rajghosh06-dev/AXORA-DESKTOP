@@ -204,6 +204,7 @@ function App() {
           </div>
         </main>
       </div>
+      <ToastNotification />
     </>
   );
 }

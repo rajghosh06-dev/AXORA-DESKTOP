@@ -36,18 +36,23 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </StackPanel>
                     <Button Grid.Column="2" Margin="8,0,0,0"
-                             Command="{Binding ViewModel.ShowSystemDiagnosticsCommand}"
-                             VerticalAlignment="Center"
-                             ToolTipService.ToolTip="View hardware diagnostic report"
-                             Style="{StaticResource AccentButtonStyle}">
-                         <StackPanel Orientation="Horizontal" Spacing="6">
-                             <FontIcon Glyph="&#xEA00;" FontSize="12"/>
-                             <TextBlock Text="Diagnostics" VerticalAlignment="Center"/>
-                         </StackPanel>
-                     </Button>
+                            x:Name="DiagnosticsButton"
+                            AutomationProperties.Name="Hardware Diagnostics"
+                            Command="{Binding ViewModel.ShowSystemDiagnosticsCommand}"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="View hardware diagnostic report"
+                            Style="{StaticResource AccentButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xEA00;" FontSize="12"/>
+                            <TextBlock Text="Diagnostics" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button Grid.Column="3"
+                            x:Name="RefreshTelemetryButton"
+                            AutomationProperties.Name="Refresh System Telemetry"
                             Command="{Binding ViewModel.RefreshTelemetryCommand}"
-                            VerticalAlignment="Center">
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="Refresh system telemetry">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE72C;" FontSize="12"/>
                             <TextBlock Text="Refresh" VerticalAlignment="Center"/>
@@ -68,7 +73,11 @@
                             <FontIcon Glyph="&#xEA00;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
                             <TextBlock Text="Hardware &amp; Runtime Diagnostic Report" FontWeight="SemiBold" FontSize="14"/>
                         </StackPanel>
-                        <Button HorizontalAlignment="Right" Command="{Binding ViewModel.CloseSystemDiagnosticsCommand}" Padding="6,4">
+                        <Button HorizontalAlignment="Right"
+                                x:Name="CloseDiagnosticsButton"
+                                AutomationProperties.Name="Close Diagnostic Report"
+                                ToolTipService.ToolTip="Close Diagnostic Report"
+                                Command="{Binding ViewModel.CloseSystemDiagnosticsCommand}" Padding="6,4">
                             <FontIcon Glyph="&#xE711;" FontSize="12"/>
                         </Button>
                     </Grid>
@@ -209,6 +218,8 @@
                                FontWeight="SemiBold"
                                VerticalAlignment="Center"/>
                     <Button Grid.Column="1"
+                            x:Name="OpenQuickDropFolderButton"
+                            AutomationProperties.Name="Open QuickDrop Folder"
                             Command="{Binding ViewModel.OpenQuickDropFolderCommand}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE838;" FontSize="13"/>

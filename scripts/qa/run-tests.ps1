@@ -77,13 +77,23 @@ if ($Target -eq 'WinUI' -or $Target -eq 'All') {
     }
 }
 
-# 2. Run MaterialUI Tests
+    # 2. Run MaterialUI Tests
 if ($Target -eq 'MaterialUI' -or $Target -eq 'All') {
     Write-Host "`n[2] Running MaterialUI Tests..." -ForegroundColor Yellow
+    if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue) -and (Test-Path "$env:USERPROFILE\.cargo\bin\cargo.exe")) {
+        $env:Path = "$env:USERPROFILE\.cargo\bin;" + $env:Path
+    }
+    $devShell = "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\Launch-VsDevShell.ps1"
+    if (-not (Get-Command "cl.exe" -ErrorAction SilentlyContinue) -and (Test-Path $devShell)) {
+        & $devShell -Arch amd64 -HostArch amd64 | Out-Null
+    }
     $cargoCmd = Get-Command "cargo" -ErrorAction SilentlyContinue
     if ($cargoCmd) {
         $cargoToml = Join-Path $WorkspaceRoot "Axora-Desktop-MaterialUI\src-tauri\Cargo.toml"
-        $output = cargo test --manifest-path $cargoToml -- --nocapture 2>&1
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = "SilentlyContinue"
+        $output = & cargo test --manifest-path $cargoToml 2>&1 | ForEach-Object { "$_" }
+        $ErrorActionPreference = $prevEap
         $output | ForEach-Object { Write-Host "  $_" }
         if ($LASTEXITCODE -eq 0) {
             Write-Host "[PASS] MaterialUI Rust Backend Unit Tests." -ForegroundColor Green
