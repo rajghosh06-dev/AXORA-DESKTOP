@@ -48,8 +48,11 @@ public sealed class PdfExtractionService : IPdfExtractionService
 
                     try
                     {
-                        var content = ContentReader.ReadContent(page);
-                        ExtractTextFromContent(content, sb);
+                        string pageText = PdfTextExtractor.ExtractTextFromPage(page);
+                        if (!string.IsNullOrWhiteSpace(pageText))
+                        {
+                            sb.AppendLine(pageText);
+                        }
                     }
                     catch (Exception pageEx)
                     {
@@ -74,30 +77,5 @@ public sealed class PdfExtractionService : IPdfExtractionService
 
         await using var stream = File.OpenRead(filePath);
         return await ExtractPdfContentAsync(stream, ct);
-    }
-
-    private static void ExtractTextFromContent(CObject obj, StringBuilder sb)
-    {
-        if (obj is CSequence sequence)
-        {
-            foreach (var element in sequence)
-            {
-                ExtractTextFromContent(element, sb);
-            }
-        }
-        else if (obj is CString cString)
-        {
-            if (!string.IsNullOrWhiteSpace(cString.Value))
-            {
-                sb.Append(cString.Value).Append(' ');
-            }
-        }
-        else if (obj is CArray cArray)
-        {
-            foreach (var element in cArray)
-            {
-                ExtractTextFromContent(element, sb);
-            }
-        }
     }
 }
