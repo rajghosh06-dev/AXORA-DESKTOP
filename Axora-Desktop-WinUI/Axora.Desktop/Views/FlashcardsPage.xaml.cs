@@ -15,13 +15,26 @@ public sealed partial class FlashcardsPage : Page
     {
         InitializeComponent();
         DataContext = this;
-        ViewModel.PropertyChanged += (_, _) => UpdateCardDisplay();
-        Loaded += (_, _) =>
-        {
-            UpdateCardDisplay();
-            // FEAT-4: Focus page root so keyboard accelerators fire without clicking first
-            this.Focus(FocusState.Programmatic);
-        };
+        Loaded += FlashcardsPage_Loaded;
+        Unloaded += FlashcardsPage_Unloaded;
+    }
+
+    private void FlashcardsPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        UpdateCardDisplay();
+        // FEAT-4: Focus page root so keyboard accelerators fire without clicking first
+        this.Focus(FocusState.Programmatic);
+    }
+
+    private void FlashcardsPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        UpdateCardDisplay();
     }
 
     private void DeckList_SelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -19,6 +19,7 @@ namespace Axora.Desktop.ViewModels;
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly Services.Contracts.IAppSettingsService _settingsService;
+    private readonly Services.Contracts.IThemeService? _themeService;
     private bool _isLoading; // Guard to suppress IsDirty during LoadSettings()
 
     [ObservableProperty] private int _selectedThemeIndex;
@@ -38,9 +39,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int _argon2MemoryMb = 64;
     [ObservableProperty] private int _argon2Iterations = 3;
 
-    public SettingsViewModel(Services.Contracts.IAppSettingsService settingsService)
+    public SettingsViewModel(
+        Services.Contracts.IAppSettingsService settingsService,
+        Services.Contracts.IThemeService? themeService = null)
     {
         _settingsService = settingsService;
+        _themeService = themeService;
         _appVersion = GetAppVersion();
         LoadSettings();
     }
@@ -61,9 +65,28 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsDirty = false;
     }
 
-    // FEAT-6: Dirty-state partial method handlers
-    partial void OnSelectedThemeIndexChanged(int value) { if (!_isLoading) IsDirty = true; }
-    partial void OnAccentColorChanged(string value) { if (!_isLoading) IsDirty = true; }
+    // FEAT-6: Dirty-state partial method handlers with immediate theme/accent visual propagation
+    partial void OnSelectedThemeIndexChanged(int value)
+    {
+        if (!_isLoading)
+        {
+            IsDirty = true;
+            _themeService?.SetTheme(value);
+        }
+    }
+
+    partial void OnAccentColorChanged(string value)
+    {
+        if (!_isLoading)
+        {
+            IsDirty = true;
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                _themeService?.SetAccentColor(value);
+            }
+        }
+    }
+
     partial void OnIsTelemetryEnabledChanged(bool value) { if (!_isLoading) IsDirty = true; }
     partial void OnAutoStartP2pEngineChanged(bool value) { if (!_isLoading) IsDirty = true; }
     partial void OnBackgroundQuickDropListenChanged(bool value) { if (!_isLoading) IsDirty = true; }
@@ -85,17 +108,37 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settingsService.Argon2MemoryMb = Argon2MemoryMb;
         _settingsService.Argon2Iterations = Argon2Iterations;
         _settingsService.Save();
+        _themeService?.SetTheme(SelectedThemeIndex);
+        if (!string.IsNullOrWhiteSpace(AccentColor))
+        {
+            _themeService?.SetAccentColor(AccentColor);
+        }
         SaveStatus = "Settings saved to %APPDATA%\\Axora\\settings.json";
         IsDirty = false;
     }
 
-    [RelayCommand] public void RevertSettings() { LoadSettings(); SaveStatus = "Changes reverted."; }
+    [RelayCommand]
+    public void RevertSettings()
+    {
+        LoadSettings();
+        _themeService?.SetTheme(SelectedThemeIndex);
+        if (!string.IsNullOrWhiteSpace(AccentColor))
+        {
+            _themeService?.SetAccentColor(AccentColor);
+        }
+        SaveStatus = "Changes reverted.";
+    }
 
     [RelayCommand]
     public void ResetToDefaults()
     {
         _settingsService.ResetToDefaults();
         LoadSettings();
+        _themeService?.SetTheme(SelectedThemeIndex);
+        if (!string.IsNullOrWhiteSpace(AccentColor))
+        {
+            _themeService?.SetAccentColor(AccentColor);
+        }
         SaveStatus = "Reset to default preferences.";
         IsDirty = false;
     }

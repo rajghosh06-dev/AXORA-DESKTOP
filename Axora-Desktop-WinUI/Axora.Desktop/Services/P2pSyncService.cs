@@ -96,6 +96,8 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
         // Bind to LAN IPv4 on dynamic port
         _localIp = GetLocalLanIpv4();
         _listener = new TcpListener(_localIp, 0);
+        _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        _listener.ExclusiveAddressUse = false;
         _listener.Start(backlog: 8);
         _localPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
 
@@ -121,8 +123,19 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
     /// <inheritdoc/>
     public async Task StopAsync(CancellationToken ct = default)
     {
-        _serverCts?.Cancel();
-        _listener?.Stop();
+        if (!IsRunning && _serverCts is null) return;
+
+        try
+        {
+            _serverCts?.Cancel();
+        }
+        catch (ObjectDisposedException) { }
+
+        try
+        {
+            _listener?.Stop();
+        }
+        catch { }
         _listener = null;
 
         await _socketLock.WaitAsync(ct);
@@ -130,9 +143,16 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
         {
             foreach (var ws in _activeSockets)
             {
-                if (ws.State == WebSocketState.Open)
-                    await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutdown", ct);
-                ws.Dispose();
+                try
+                {
+                    if (ws.State == WebSocketState.Open)
+                    {
+                        using var closeTimeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutdown", closeTimeout.Token);
+                    }
+                }
+                catch { }
+                try { ws.Dispose(); } catch { }
             }
             _activeSockets.Clear();
         }
@@ -142,8 +162,12 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
         }
 
         PairingQrJson = string.Empty;
-        _ecdhKey?.Dispose();
+        try { _ecdhKey?.Dispose(); } catch { }
         _ecdhKey = null;
+
+        try { _serverCts?.Dispose(); } catch { }
+        _serverCts = null;
+
         _logger.LogInformation("P2P server stopped.");
     }
 
@@ -174,12 +198,20 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
         {
             try
             {
-                var tcpClient = await _listener!.AcceptTcpClientAsync(ct);
+                var listener = _listener;
+                if (listener == null) break;
+                var tcpClient = await listener.AcceptTcpClientAsync(ct);
                 _ = Task.Run(() => HandleClientAsync(tcpClient, ct), ct);
             }
             catch (OperationCanceledException) { break; }
+            catch (ObjectDisposedException) { break; }
+            catch (SocketException sex) when (ct.IsCancellationRequested || sex.SocketErrorCode == SocketError.Interrupted || sex.SocketErrorCode == SocketError.OperationAborted)
+            {
+                break;
+            }
             catch (Exception ex)
             {
+                if (ct.IsCancellationRequested) break;
                 _logger.LogWarning(ex, "Error in TCP accept loop.");
             }
         }
@@ -516,10 +548,11 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
 
     public void Dispose()
     {
-        _serverCts?.Cancel();
-        _serverCts?.Dispose();
-        _listener?.Stop();
-        _ecdhKey?.Dispose();
-        _socketLock.Dispose();
+        try
+        {
+            StopAsync().GetAwaiter().GetResult();
+        }
+        catch { }
+        try { _socketLock.Dispose(); } catch { }
     }
 }

@@ -16,6 +16,8 @@ public interface IAppSettingsService : INotifyPropertyChanged
     int Argon2MemoryMb { get; set; }
     int Argon2Iterations { get; set; }
 
+    Exception? LastPersistenceError { get; }
+
     void Save();
     void ResetToDefaults();
 }

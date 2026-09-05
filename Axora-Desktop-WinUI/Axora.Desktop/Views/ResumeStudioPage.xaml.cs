@@ -31,11 +31,8 @@ public sealed partial class ResumeStudioPage : Page
         InitializeComponent();
         DataContext = this;
 
-        if (ViewModel != null)
-        {
-            ViewModel.PropertyChanged += ViewModel_PropertyChanged;
-        }
         Loaded += ResumeStudioPage_Loaded;
+        Unloaded += ResumeStudioPage_Unloaded;
     }
 
     private DispatcherTimer? _autoSaveTimer;
@@ -56,25 +53,50 @@ public sealed partial class ResumeStudioPage : Page
         _autoSaveTimer.Start();
     }
 
+    private ResumeDocument? _hookedDocument;
+
+    private void HookDocument(ResumeDocument? doc)
+    {
+        UnhookDocument(_hookedDocument);
+        _hookedDocument = doc;
+        if (_hookedDocument != null)
+        {
+            _hookedDocument.PropertyChanged += OnDocumentOrHeaderPropertyChanged;
+            if (_hookedDocument.Header != null)
+            {
+                _hookedDocument.Header.PropertyChanged += OnDocumentOrHeaderPropertyChanged;
+            }
+        }
+    }
+
+    private void UnhookDocument(ResumeDocument? doc)
+    {
+        if (doc != null)
+        {
+            doc.PropertyChanged -= OnDocumentOrHeaderPropertyChanged;
+            if (doc.Header != null)
+            {
+                doc.Header.PropertyChanged -= OnDocumentOrHeaderPropertyChanged;
+            }
+        }
+        if (ReferenceEquals(_hookedDocument, doc))
+        {
+            _hookedDocument = null;
+        }
+    }
+
     private void ResumeStudioPage_Loaded(object sender, RoutedEventArgs e)
     {
-        // Hook auto-save on any change to Document or Header
-        if (ViewModel?.Document != null)
+        if (ViewModel != null)
         {
-            ViewModel.Document.PropertyChanged += (_, _) => TriggerAutoSave();
-            ViewModel.Document.Header.PropertyChanged += (_, _) => TriggerAutoSave();
+            ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         }
+
+        HookDocument(ViewModel?.Document);
 
         if (TxtResumeTitle != null)
         {
-            TxtResumeTitle.LostFocus += async (_, _) =>
-            {
-                try
-                {
-                    if (ViewModel != null) await ViewModel.SaveToLibraryAsync();
-                }
-                catch { }
-            };
+            TxtResumeTitle.LostFocus += TxtResumeTitle_LostFocus;
         }
 
         // Defer one layout pass so all RadioButton templates are fully applied
@@ -87,6 +109,38 @@ public sealed partial class ResumeStudioPage : Page
         });
     }
 
+    private void ResumeStudioPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _autoSaveTimer?.Stop();
+        _autoSaveTimer = null;
+
+        if (ViewModel != null)
+        {
+            ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        }
+
+        UnhookDocument(_hookedDocument);
+
+        if (TxtResumeTitle != null)
+        {
+            TxtResumeTitle.LostFocus -= TxtResumeTitle_LostFocus;
+        }
+    }
+
+    private void OnDocumentOrHeaderPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        TriggerAutoSave();
+    }
+
+    private async void TxtResumeTitle_LostFocus(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (ViewModel != null) await ViewModel.SaveToLibraryAsync();
+        }
+        catch { }
+    }
+
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(ResumeStudioViewModel.SelectedTargetLength))
@@ -95,6 +149,8 @@ public sealed partial class ResumeStudioPage : Page
             ApplyTabSelection();
         else if (e.PropertyName == nameof(ResumeStudioViewModel.SelectedExportFormatIndex))
             ApplyExportFormatSelection();
+        else if (e.PropertyName == nameof(ResumeStudioViewModel.Document))
+            HookDocument(ViewModel?.Document);
     }
 
     // ── Target Length Dropdown (1-Page / 2-Page / 3-Page / 4+ CV) ────────────
@@ -207,13 +263,20 @@ public sealed partial class ResumeStudioPage : Page
     // ── Navigation ────────────────────────────────────────────────────────────
     private async void BackToDashboard_Click(object sender, RoutedEventArgs e)
     {
-        // Auto-save to library so the resume shows up in the dashboard tile list
+        _autoSaveTimer?.Stop();
         try { await ViewModel.SaveToLibraryAsync(); } catch { }
 
         if (Frame != null)
         {
-            Frame.Navigate(typeof(ResumeStudioDashboardPage), null,
-                new Microsoft.UI.Xaml.Media.Animation.EntranceNavigationTransitionInfo());
+            if (Frame.CanGoBack)
+            {
+                Frame.GoBack();
+            }
+            else
+            {
+                Frame.Navigate(typeof(ResumeStudioDashboardPage), null,
+                    new Microsoft.UI.Xaml.Media.Animation.EntranceNavigationTransitionInfo());
+            }
         }
     }
 

@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Axora.Desktop.Services.Contracts;
+using Microsoft.Extensions.Logging;
 
 namespace Axora.Desktop.Services;
 
@@ -13,17 +14,31 @@ namespace Axora.Desktop.Services;
 /// </summary>
 public sealed class AppSettingsService : IAppSettingsService
 {
-    private static readonly string SettingsDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Axora");
+    private readonly string _settingsDirectory;
+    private readonly string _settingsFilePath;
 
-    private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
-
+    private readonly Microsoft.Extensions.Logging.ILogger<AppSettingsService>? _logger;
     private SettingsData _data = new();
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    public Exception? LastPersistenceError { get; private set; }
 
-    public AppSettingsService()
+    public AppSettingsService(Microsoft.Extensions.Logging.ILogger<AppSettingsService>? logger = null, string? customDirectory = null)
     {
+        _logger = logger;
+
+        string baseDir = !string.IsNullOrWhiteSpace(customDirectory)
+            ? customDirectory
+            : (Environment.GetEnvironmentVariable("APPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+
+        if (string.IsNullOrWhiteSpace(baseDir))
+        {
+            baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        }
+
+        _settingsDirectory = Path.Combine(baseDir, "Axora");
+        _settingsFilePath = Path.Combine(_settingsDirectory, "settings.json");
+
         Load();
     }
 
@@ -86,11 +101,16 @@ public sealed class AppSettingsService : IAppSettingsService
     {
         try
         {
-            Directory.CreateDirectory(SettingsDirectory);
+            Directory.CreateDirectory(_settingsDirectory);
             var json = JsonSerializer.Serialize(_data, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(SettingsFilePath, json);
+            File.WriteAllText(_settingsFilePath, json);
+            LastPersistenceError = null;
         }
-        catch { /* Fallback */ }
+        catch (Exception ex)
+        {
+            LastPersistenceError = ex;
+            _logger?.LogError(ex, "Failed to persist application settings to {Path}. Error: {Message}", _settingsFilePath, ex.Message);
+        }
     }
 
     public void ResetToDefaults()
@@ -104,14 +124,19 @@ public sealed class AppSettingsService : IAppSettingsService
     {
         try
         {
-            if (File.Exists(SettingsFilePath))
+            if (File.Exists(_settingsFilePath))
             {
-                var json = File.ReadAllText(SettingsFilePath);
+                var json = File.ReadAllText(_settingsFilePath);
                 _data = JsonSerializer.Deserialize<SettingsData>(json) ?? new SettingsData();
+                LastPersistenceError = null;
                 return;
             }
         }
-        catch { /* Defaults will be used */ }
+        catch (Exception ex)
+        {
+            LastPersistenceError = ex;
+            _logger?.LogWarning(ex, "Failed to read application settings from {Path}. Using defaults. Error: {Message}", _settingsFilePath, ex.Message);
+        }
 
         _data = new SettingsData();
         Save();

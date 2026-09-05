@@ -17,17 +17,33 @@ public sealed partial class VaultPage : Page
     {
         InitializeComponent();
         DataContext = this;
+        Loaded += VaultPage_Loaded;
+        Unloaded += VaultPage_Unloaded;
+    }
 
-        ViewModel.PropertyChanged += (s, e) =>
+    private void VaultPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        if (VaultPasswordBox != null && VaultPasswordBox.Password != ViewModel.Password)
         {
-            if (e.PropertyName == nameof(VaultViewModel.Password))
+            VaultPasswordBox.Password = ViewModel.Password;
+        }
+    }
+
+    private void VaultPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(VaultViewModel.Password))
+        {
+            if (VaultPasswordBox != null && VaultPasswordBox.Password != ViewModel.Password)
             {
-                if (VaultPasswordBox.Password != ViewModel.Password)
-                {
-                    VaultPasswordBox.Password = ViewModel.Password;
-                }
+                VaultPasswordBox.Password = ViewModel.Password;
             }
-        };
+        }
     }
 
     private void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e)

@@ -41,10 +41,12 @@ public sealed partial class ResumeStudioDashboardPage : Page
             catch { }
 
             Loaded += OnPageLoaded;
+            Unloaded += OnPageUnloaded;
             return;
         }
 
         Loaded += OnPageLoaded;
+        Unloaded += OnPageUnloaded;
     }
 
     protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
@@ -63,72 +65,164 @@ public sealed partial class ResumeStudioDashboardPage : Page
         RefreshTiles();
     }
 
+    private void OnPageUnloaded(object sender, RoutedEventArgs e)
+    {
+        _searchDebounceTimer?.Stop();
+        _searchDebounceTimer = null;
+    }
+
+    private sealed class ResumeTileInfo
+    {
+        public required string FilePath { get; init; }
+        public required string Name { get; init; }
+        public required string RoleTitle { get; init; }
+        public required string PageBadge { get; init; }
+        public required string LastModified { get; init; }
+    }
+
+    private DispatcherTimer? _searchDebounceTimer;
+
     // ── Tile refresh ─────────────────────────────────────────────────────────
     private void Refresh_Click(object sender, RoutedEventArgs e)
     {
-        RefreshTiles(SearchBox?.Text);
+        _ = RefreshTilesAsync(SearchBox?.Text);
     }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        RefreshTiles(SearchBox?.Text);
+        if (_searchDebounceTimer == null)
+        {
+            _searchDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            _searchDebounceTimer.Tick += (_, _) =>
+            {
+                _searchDebounceTimer?.Stop();
+                _ = RefreshTilesAsync(SearchBox?.Text);
+            };
+        }
+        else
+        {
+            _searchDebounceTimer.Stop();
+        }
+        _searchDebounceTimer.Start();
     }
 
     private void RefreshTiles(string? searchQuery = null)
     {
+        _ = RefreshTilesAsync(searchQuery);
+    }
+
+    private async Task RefreshTilesAsync(string? searchQuery = null)
+    {
         if (TxtCount is null || EmptyState is null || TilesStack is null) return;
 
-        string[] files = Array.Empty<string>();
-
-        try
+        var items = await Task.Run(() =>
         {
-            if (Directory.Exists(ResumeFolder))
+            var list = new System.Collections.Generic.List<ResumeTileInfo>();
+            try
             {
-                files = Directory.GetFiles(ResumeFolder, "*.json")
-                                 .OrderByDescending(File.GetLastWriteTime)
-                                 .ToArray();
+                if (Directory.Exists(ResumeFolder))
+                {
+                    var files = Directory.GetFiles(ResumeFolder, "*.json")
+                                         .OrderByDescending(File.GetLastWriteTime)
+                                         .ToArray();
+
+                    foreach (var path in files)
+                    {
+                        try
+                        {
+                            var fn = Path.GetFileNameWithoutExtension(path);
+                            string json = string.Empty;
+                            try { json = File.ReadAllText(path); } catch { }
+
+                            ResumeDocument? doc = null;
+                            if (!string.IsNullOrEmpty(json))
+                            {
+                                try { doc = JsonSerializer.Deserialize<ResumeDocument>(json); } catch { }
+                            }
+
+                            string name = "Untitled Resume";
+                            string roleTitle = "No title specified";
+                            string pageBadge = "2-Page ATS";
+
+                            if (doc != null)
+                            {
+                                if (!string.IsNullOrWhiteSpace(doc.ResumeTitle))
+                                    name = doc.ResumeTitle;
+                                else if (!string.IsNullOrWhiteSpace(doc.Header.FullName))
+                                    name = doc.Header.FullName;
+
+                                if (!string.IsNullOrWhiteSpace(doc.Header.ProfessionalTitle))
+                                    roleTitle = doc.Header.ProfessionalTitle;
+
+                                pageBadge = doc.Formatting.TargetLength switch
+                                {
+                                    PageTargetLength.OnePage => "1-Page ATS",
+                                    PageTargetLength.TwoPages => "2-Page ATS",
+                                    PageTargetLength.ThreePages => "3-Page ATS",
+                                    PageTargetLength.FourPlusPages => "4+ CV",
+                                    _ => "2-Page ATS"
+                                };
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(searchQuery))
+                            {
+                                bool matches = fn.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)
+                                            || name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)
+                                            || roleTitle.Contains(searchQuery, StringComparison.OrdinalIgnoreCase)
+                                            || json.Contains(searchQuery, StringComparison.OrdinalIgnoreCase);
+
+                                if (!matches) continue;
+                            }
+
+                            string lastModified = "Unknown";
+                            try { lastModified = FormatRelativeTime(File.GetLastWriteTime(path)); } catch { }
+
+                            list.Add(new ResumeTileInfo
+                            {
+                                FilePath = path,
+                                Name = name,
+                                RoleTitle = roleTitle,
+                                PageBadge = pageBadge,
+                                LastModified = lastModified
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[ResumeStudioDashboardPage] Parse tile failed for {path}: {ex}");
+                        }
+                    }
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[ResumeStudioDashboardPage] Directory scan failed: {ex}");
-        }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ResumeStudioDashboardPage] Directory scan failed: {ex}");
+            }
+            return list;
+        });
 
-        TxtCount.Text = files.Length.ToString();
+        TxtCount.Text = items.Count.ToString();
 
-        if (files.Length == 0)
+        if (items.Count == 0)
         {
             EmptyState.Visibility = Visibility.Visible;
             TilesStack.Visibility = Visibility.Collapsed;
+            TilesStack.Children.Clear();
             return;
         }
 
         EmptyState.Visibility = Visibility.Collapsed;
         TilesStack.Visibility = Visibility.Visible;
-
         TilesStack.Children.Clear();
-        foreach (var path in files)
+
+        foreach (var info in items)
         {
             try
             {
-                if (!string.IsNullOrWhiteSpace(searchQuery))
-                {
-                    var fn = Path.GetFileNameWithoutExtension(path);
-                    if (!fn.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
-                    {
-                        var content = File.ReadAllText(path);
-                        if (!content.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
-                            continue;
-                    }
-                }
-
-                TilesStack.Children.Add(BuildTile(path));
+                TilesStack.Children.Add(BuildTile(info));
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[ResumeStudioDashboardPage] BuildTile failed for {path}: {ex}");
+                System.Diagnostics.Debug.WriteLine($"[ResumeStudioDashboardPage] BuildTile failed for {info.FilePath}: {ex}");
             }
         }
     }
@@ -145,43 +239,14 @@ public sealed partial class ResumeStudioDashboardPage : Page
     }
 
     // ── Tile card builder ────────────────────────────────────────────────────
-    private UIElement BuildTile(string filePath)
+    private UIElement BuildTile(ResumeTileInfo info)
     {
-        string name = "Untitled Resume";
-        string roleTitle = "No title specified";
-        string pageBadge = "2-Page ATS";
+        string name = info.Name;
+        string roleTitle = info.RoleTitle;
+        string pageBadge = info.PageBadge;
+        string lastModified = info.LastModified;
 
-        try
-        {
-            var json = File.ReadAllText(filePath);
-            var doc = JsonSerializer.Deserialize<ResumeDocument>(json);
-            if (doc != null)
-            {
-                if (!string.IsNullOrWhiteSpace(doc.ResumeTitle))
-                    name = doc.ResumeTitle;
-                else if (!string.IsNullOrWhiteSpace(doc.Header.FullName))
-                    name = doc.Header.FullName;
-
-                if (!string.IsNullOrWhiteSpace(doc.Header.ProfessionalTitle))
-                    roleTitle = doc.Header.ProfessionalTitle;
-
-                pageBadge = doc.Formatting.TargetLength switch
-                {
-                    PageTargetLength.OnePage => "1-Page ATS",
-                    PageTargetLength.TwoPages => "2-Page ATS",
-                    PageTargetLength.ThreePages => "3-Page ATS",
-                    PageTargetLength.FourPlusPages => "4+ CV",
-                    _ => "2-Page ATS"
-                };
-            }
-        }
-        catch { /* corrupt JSON — show defaults */ }
-
-        string lastModified = "Unknown";
-        try { lastModified = FormatRelativeTime(File.GetLastWriteTime(filePath)); }
-        catch { }
-
-        var capturedPath = filePath;
+        var capturedPath = info.FilePath;
         var capturedName = name;
 
         // Card container

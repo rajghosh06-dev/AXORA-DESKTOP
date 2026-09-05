@@ -60,38 +60,55 @@ public sealed class WinRtOcrService : IOcrService
         {
             ct.ThrowIfCancellationRequested();
 
-            // Convert Stream → IRandomAccessStream for WinRT APIs
-            using var raStream = imageStream.AsRandomAccessStream();
-            raStream.Seek(0);
+            long originalPos = imageStream.CanSeek ? imageStream.Position : 0;
 
-            var decoder = await BitmapDecoder.CreateAsync(raStream);
-            // FIX-2: Dispose SoftwareBitmap after OCR to prevent unmanaged WinRT memory leak on repeated scans
-            using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
-                BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
-
-            // WinRT OCR requires Bgra8 format — convert if needed
-            SoftwareBitmap? convertedBitmap = null;
-            SoftwareBitmap targetBitmap = softwareBitmap;
             try
             {
-                if (softwareBitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8)
+                // Copy to an isolated InMemoryRandomAccessStream so disposing it does NOT close the caller's imageStream
+                using var inMemoryStream = new InMemoryRandomAccessStream();
+                using (var outStream = inMemoryStream.AsStreamForWrite())
                 {
-                    convertedBitmap = SoftwareBitmap.Convert(softwareBitmap,
-                        BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
-                    targetBitmap = convertedBitmap;
+                    await imageStream.CopyToAsync(outStream, ct);
+                    await outStream.FlushAsync(ct);
                 }
+                inMemoryStream.Seek(0);
 
-                ct.ThrowIfCancellationRequested();
+                var decoder = await BitmapDecoder.CreateAsync(inMemoryStream);
+                // FIX-2: Dispose SoftwareBitmap after OCR to prevent unmanaged WinRT memory leak on repeated scans
+                using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
+                    BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
 
-                var ocrResult = await _engine.RecognizeAsync(targetBitmap);
+                // WinRT OCR requires Bgra8 format — convert if needed
+                SoftwareBitmap? convertedBitmap = null;
+                SoftwareBitmap targetBitmap = softwareBitmap;
+                try
+                {
+                    if (softwareBitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8)
+                    {
+                        convertedBitmap = SoftwareBitmap.Convert(softwareBitmap,
+                            BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+                        targetBitmap = convertedBitmap;
+                    }
 
-                // Reconstruct text preserving line breaks
-                var lines = ocrResult.Lines.Select(l => l.Text);
-                return string.Join(Environment.NewLine, lines);
+                    ct.ThrowIfCancellationRequested();
+
+                    var ocrResult = await _engine.RecognizeAsync(targetBitmap);
+
+                    // Reconstruct text preserving line breaks
+                    var lines = ocrResult.Lines.Select(l => l.Text);
+                    return string.Join(Environment.NewLine, lines);
+                }
+                finally
+                {
+                    convertedBitmap?.Dispose();
+                }
             }
             finally
             {
-                convertedBitmap?.Dispose();
+                if (imageStream.CanSeek)
+                {
+                    try { imageStream.Position = originalPos; } catch { }
+                }
             }
         }, ct);
     }

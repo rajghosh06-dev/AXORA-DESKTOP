@@ -22,7 +22,19 @@ public sealed partial class ScholarKitPage : Page
     {
         InitializeComponent();
         DataContext = this;
+        Loaded += ScholarKitPage_Loaded;
+        Unloaded += ScholarKitPage_Unloaded;
+    }
+
+    private void ScholarKitPage_Loaded(object sender, RoutedEventArgs e)
+    {
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        SwitchStudioView(ViewModel.SelectedStudioTabIndex);
+    }
+
+    private void ScholarKitPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)

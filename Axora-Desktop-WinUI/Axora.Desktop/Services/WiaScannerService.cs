@@ -50,30 +50,32 @@ public sealed class WiaScannerService : IScannerService
                 deviceManager = Activator.CreateInstance(deviceManagerType)!;
 
                 // Enumerate via local variable so we can release the deviceInfos COM object
-                var deviceInfos = deviceManager.DeviceInfos;
+                dynamic? deviceInfos = deviceManager.DeviceInfos;
                 try
                 {
-                    foreach (dynamic info in deviceInfos)
+                    if (deviceInfos != null)
                     {
-                        dynamic? capturedInfo = info;
-                        try
+                        foreach (dynamic info in deviceInfos)
                         {
-                            // WiaDeviceType.ScannerDeviceType = 1
-                            if ((int)capturedInfo.Type == 1)
+                            dynamic? capturedInfo = info;
+                            try
                             {
-                                scanners.Add((string)capturedInfo.Properties["Name"].Value);
+                                // WiaDeviceType.ScannerDeviceType = 1
+                                if ((int)capturedInfo.Type == 1)
+                                {
+                                    scanners.Add((string)capturedInfo.Properties["Name"].Value);
+                                }
                             }
-                        }
-                        finally
-                        {
-                            if (capturedInfo is not null)
-                                Marshal.ReleaseComObject(capturedInfo);
+                            finally
+                            {
+                                SafeReleaseCom(capturedInfo);
+                            }
                         }
                     }
                 }
                 finally
                 {
-                    Marshal.ReleaseComObject(deviceInfos);
+                    SafeReleaseCom(deviceInfos);
                 }
             }
             catch (COMException ex)
@@ -82,8 +84,7 @@ public sealed class WiaScannerService : IScannerService
             }
             finally
             {
-                if (deviceManager is not null)
-                    Marshal.ReleaseComObject(deviceManager);
+                SafeReleaseCom(deviceManager);
             }
 
             return (IReadOnlyList<string>)scanners;
@@ -100,7 +101,11 @@ public sealed class WiaScannerService : IScannerService
         return await Task.Run(() =>
         {
             dynamic? deviceManager = null;
+            dynamic? connectedInfo = null;
             dynamic? targetDevice = null;
+            dynamic? items = null;
+            dynamic? scannerItem = null;
+            dynamic? itemProperties = null;
             dynamic? scannedImage = null;
             string? tempPath = null;
 
@@ -111,44 +116,49 @@ public sealed class WiaScannerService : IScannerService
                 deviceManager = Activator.CreateInstance(deviceManagerType)!;
 
                 // Locate the named scanner — release each info COM object
-                var deviceInfos = deviceManager.DeviceInfos;
+                dynamic? deviceInfos = deviceManager.DeviceInfos;
                 try
                 {
-                    foreach (dynamic info in deviceInfos)
+                    if (deviceInfos != null)
                     {
-                        dynamic? capturedInfo = info;
-                        try
+                        foreach (dynamic info in deviceInfos)
                         {
-                            if ((int)capturedInfo.Type == 1 &&
-                                string.Equals((string)capturedInfo.Properties["Name"].Value, deviceName,
-                                    StringComparison.OrdinalIgnoreCase))
+                            dynamic? capturedInfo = info;
+                            try
                             {
-                                targetDevice = capturedInfo.Connect();
-                                break;
+                                if ((int)capturedInfo.Type == 1 &&
+                                    string.Equals((string)capturedInfo.Properties["Name"].Value, deviceName,
+                                        StringComparison.OrdinalIgnoreCase))
+                                {
+                                    connectedInfo = capturedInfo;
+                                    targetDevice = capturedInfo.Connect();
+                                    break;
+                                }
                             }
-                        }
-                        finally
-                        {
-                            // Only release info if we didn't connect from it (connect returns a different object)
-                            if (capturedInfo is not null && targetDevice is null)
-                                Marshal.ReleaseComObject(capturedInfo);
+                            finally
+                            {
+                                if (capturedInfo is not null && !ReferenceEquals(capturedInfo, connectedInfo))
+                                    SafeReleaseCom(capturedInfo);
+                            }
                         }
                     }
                 }
                 finally
                 {
-                    Marshal.ReleaseComObject(deviceInfos);
+                    SafeReleaseCom(deviceInfos);
                 }
 
                 if (targetDevice is null)
                     throw new InvalidOperationException($"Scanner '{deviceName}' not found or not connected.");
 
-                var scannerItem = targetDevice.Items[1];
+                items = targetDevice.Items;
+                scannerItem = items[1];
+                itemProperties = scannerItem.Properties;
 
                 // Set DPI and color mode
-                SetWiaProperty(scannerItem.Properties, WIA_IPS_XRES, dpi);
-                SetWiaProperty(scannerItem.Properties, WIA_IPS_YRES, dpi);
-                SetWiaProperty(scannerItem.Properties, WIA_IPS_PHOTOMETRIC_INTERP, (int)colorMode);
+                SetWiaProperty(itemProperties, WIA_IPS_XRES, dpi);
+                SetWiaProperty(itemProperties, WIA_IPS_YRES, dpi);
+                SetWiaProperty(itemProperties, WIA_IPS_PHOTOMETRIC_INTERP, (int)colorMode);
 
                 // WIA FormatID for JPEG: {B96B3CAE-0728-11D3-9D7B-0000F81EF32E}
                 const string wiaFormatJpeg = "{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}";
@@ -175,26 +185,43 @@ public sealed class WiaScannerService : IScannerService
                     try { File.Delete(tempPath); } catch { /* Best-effort cleanup */ }
                 }
 
-                // Release COM objects in reverse acquisition order
-                if (scannedImage is not null)
-                    Marshal.ReleaseComObject(scannedImage);
-                if (targetDevice is not null)
-                    Marshal.ReleaseComObject(targetDevice);
-                if (deviceManager is not null)
-                    Marshal.ReleaseComObject(deviceManager);
+                // Release all COM objects in reverse acquisition order
+                SafeReleaseCom(scannedImage);
+                SafeReleaseCom(itemProperties);
+                SafeReleaseCom(scannerItem);
+                SafeReleaseCom(items);
+                SafeReleaseCom(targetDevice);
+                SafeReleaseCom(connectedInfo);
+                SafeReleaseCom(deviceManager);
             }
         }, ct);
     }
 
     private static void SetWiaProperty(dynamic properties, int propId, int value)
     {
+        if (properties == null) return;
         foreach (dynamic prop in properties)
         {
-            if ((int)prop.PropertyID == propId)
+            try
             {
-                prop.Value = value;
-                return;
+                if ((int)prop.PropertyID == propId)
+                {
+                    prop.Value = value;
+                    return;
+                }
             }
+            finally
+            {
+                SafeReleaseCom(prop);
+            }
+        }
+    }
+
+    private static void SafeReleaseCom(object? comObj)
+    {
+        if (comObj != null && Marshal.IsComObject(comObj))
+        {
+            try { Marshal.ReleaseComObject(comObj); } catch { }
         }
     }
 }

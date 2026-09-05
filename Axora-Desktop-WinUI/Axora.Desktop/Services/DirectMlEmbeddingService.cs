@@ -100,51 +100,63 @@ public sealed class DirectMlEmbeddingService : IWindowsAiService, IDisposable
         {
             if (_session != null)
             {
-                // ONNX InferenceSession.Run() is documented thread-safe — no lock needed.
-                var tokens = SimpleTokenize(textChunk);
-
-                var inputIds      = new DenseTensor<long>(new[] { 1, tokens.Length });
-                var attentionMask = new DenseTensor<long>(new[] { 1, tokens.Length });
-                var tokenTypeIds  = new DenseTensor<long>(new[] { 1, tokens.Length });
-
-                for (int i = 0; i < tokens.Length; i++)
+                try
                 {
-                    inputIds[0, i]      = tokens[i];
-                    attentionMask[0, i] = 1L;
-                    tokenTypeIds[0, i]  = 0L;
+                    // ONNX InferenceSession.Run() is documented thread-safe — no lock needed.
+                    var tokens = SimpleTokenize(textChunk);
+
+                    var inputIds      = new DenseTensor<long>(new[] { 1, tokens.Length });
+                    var attentionMask = new DenseTensor<long>(new[] { 1, tokens.Length });
+                    var tokenTypeIds  = new DenseTensor<long>(new[] { 1, tokens.Length });
+
+                    for (int i = 0; i < tokens.Length; i++)
+                    {
+                        inputIds[0, i]      = tokens[i];
+                        attentionMask[0, i] = 1L;
+                        tokenTypeIds[0, i]  = 0L;
+                    }
+
+                    var inputs = new List<NamedOnnxValue>
+                    {
+                        NamedOnnxValue.CreateFromTensor("input_ids",      inputIds),
+                        NamedOnnxValue.CreateFromTensor("attention_mask", attentionMask),
+                        NamedOnnxValue.CreateFromTensor("token_type_ids", tokenTypeIds)
+                    };
+
+                    using var results = _session.Run(inputs);
+                    var outputTensor = results[0].AsTensor<float>();
+                    return outputTensor.ToArray();
                 }
-
-                var inputs = new List<NamedOnnxValue>
+                catch (Exception ex)
                 {
-                    NamedOnnxValue.CreateFromTensor("input_ids",      inputIds),
-                    NamedOnnxValue.CreateFromTensor("attention_mask", attentionMask),
-                    NamedOnnxValue.CreateFromTensor("token_type_ids", tokenTypeIds)
-                };
-
-                using var results = _session.Run(inputs);
-                var outputTensor = results[0].AsTensor<float>();
-                return outputTensor.ToArray();
+                    _logger.LogWarning(ex, "ONNX InferenceSession execution encountered an error (possible DirectML device loss/reset). Falling back to SIMD heuristic provider.");
+                    try { _session.Dispose(); } catch { }
+                    _session = null;
+                    ActiveProviderDescription = "SIMD Heuristic Engine (DirectML Device Loss Fallback)";
+                }
             }
-            else
-            {
-                // FIX O-2: Heuristic path allocates a per-call array — no shared state, no lock needed.
-                // Each call gets its own vec[], so concurrent calls are fully isolated.
-                var vec = new float[384];
-                var words = textChunk.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                for (int i = 0; i < words.Length; i++)
-                {
-                    int hash = Math.Abs(words[i].GetHashCode());
-                    int idx = hash % 384;
-                    vec[idx] += 1.0f / (float)Math.Sqrt(Math.Max(1, words.Length));
-                }
-                float mag = SimdVectorHelper.Magnitude(vec);
-                if (mag > 1e-6f)
-                {
-                    for (int i = 0; i < vec.Length; i++) vec[i] /= mag;
-                }
-                return vec;
-            }
+
+            // FIX O-2 & Device-Loss Recovery: Heuristic path allocates a per-call array — no shared state.
+            return GenerateHeuristicEmbedding(textChunk);
         }, ct);
+    }
+
+    private static float[] GenerateHeuristicEmbedding(string textChunk)
+    {
+        var vec = new float[384];
+        var words = textChunk.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < words.Length; i++)
+        {
+            int hash = Math.Abs(words[i].GetHashCode());
+            int idx = hash % 384;
+            vec[idx] += 1.0f / (float)Math.Sqrt(Math.Max(1, words.Length));
+        }
+        float mag = SimdVectorHelper.Magnitude(vec);
+        if (mag > 1e-6f)
+        {
+            for (int i = 0; i < vec.Length; i++) vec[i] /= mag;
+        }
+        return vec;
     }
 
     /// <summary>

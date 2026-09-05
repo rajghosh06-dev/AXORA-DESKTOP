@@ -137,11 +137,11 @@ public sealed class MainWindow : Window
         ctrlK.Invoked += (_, _) => ShellRoot.OpenCommandPalette();
         rootElement.KeyboardAccelerators.Add(ctrlK);
 
-        // Ctrl+\ — Toggle nav pane
+        // Ctrl+\ — Toggle nav pane (VK_OEM_5 = 0xDC)
         var ctrlSlash = new KeyboardAccelerator
         {
             Modifiers = Windows.System.VirtualKeyModifiers.Control,
-            Key = Windows.System.VirtualKey.Back
+            Key = (Windows.System.VirtualKey)0xDC
         };
         ctrlSlash.Invoked += (_, _) => ShellRoot.TogglePane();
         rootElement.KeyboardAccelerators.Add(ctrlSlash);
@@ -171,8 +171,8 @@ public sealed class MainWindow : Window
     }
 
     // ── Window Resizing Constraints & Subclassing ───────────────────────────
-    private const int MinWindowWidthDip = 1000;
-    private const int MinWindowHeightDip = 620;
+    private const int MinWindowWidthDip = 960;
+    private const int MinWindowHeightDip = 600;
     private IntPtr _hWnd = IntPtr.Zero;
     private SUBCLASSPROC? _subclassProc;
 
