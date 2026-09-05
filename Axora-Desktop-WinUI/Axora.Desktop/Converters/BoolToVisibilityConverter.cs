@@ -120,3 +120,42 @@ public sealed class StrengthToTextConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => throw new NotImplementedException();
 }
+
+public sealed class BoolToHighlightBorderBrushConverter : IValueConverter
+{
+    private static readonly SolidColorBrush HighlightBrush = new(Color.FromArgb(255, 91, 125, 232));
+    private static readonly SolidColorBrush DefaultBrush = new(Color.FromArgb(25, 128, 128, 128));
+
+    public object Convert(object value, Type targetType, object parameter, string language)
+        => value is bool b && b ? HighlightBrush : DefaultBrush;
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotImplementedException();
+}
+
+public sealed class ExtensionStatusToBrushConverter : IValueConverter
+{
+    private static readonly SolidColorBrush GreenBrush  = new(Color.FromArgb(255, 76, 175, 80));
+    private static readonly SolidColorBrush AmberBrush  = new(Color.FromArgb(255, 255, 152, 0));
+    private static readonly SolidColorBrush RedBrush    = new(Color.FromArgb(255, 229, 57, 53));
+    private static readonly SolidColorBrush NeutralBrush= new(Color.FromArgb(255, 140, 140, 140));
+
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is Models.ExtensionStatus status)
+        {
+            return status switch
+            {
+                Models.ExtensionStatus.Installed => GreenBrush,
+                Models.ExtensionStatus.UpdateAvailable => AmberBrush,
+                Models.ExtensionStatus.RepairRequired or Models.ExtensionStatus.Corrupted or Models.ExtensionStatus.Failed => RedBrush,
+                _ => NeutralBrush
+            };
+        }
+        return NeutralBrush;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotImplementedException();
+}
+

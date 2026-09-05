@@ -1,0 +1,466 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Axora.Desktop.Views.DownloadManagerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Axora.Desktop.Converters"
+    xmlns:models="using:Axora.Desktop.Models"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+        <converters:BoolToHighlightBorderBrushConverter x:Key="BoolToHighlightBorderBrushConverter"/>
+        <converters:ExtensionStatusToBrushConverter x:Key="ExtensionStatusToBrushConverter"/>
+    </Page.Resources>
+
+    <Grid Padding="24,6,24,24" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Header & Actions -->
+        <Border Grid.Row="0" CornerRadius="12" Padding="16,12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="Extension &amp; Dependency Download Manager"
+                               FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock Text="User-controlled packages, external tools, and acceleration engines. Silent updates are prohibited."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button
+                        x:Name="CheckForUpdatesButton"
+                        Content="Check for Updates"
+                        Command="{Binding ViewModel.CheckForUpdatesCommand}"
+                        AutomationProperties.Name="Check for Updates"
+                        AutomationProperties.AutomationId="CheckForUpdatesButton">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="F5"/>
+                        </Button.KeyboardAccelerators>
+                    </Button>
+                    <Button
+                        x:Name="ClearCacheButton"
+                        Content="Clear Extension Cache"
+                        Command="{Binding ViewModel.ClearCacheCommand}"
+                        AutomationProperties.Name="Clear Extension Cache"
+                        AutomationProperties.AutomationId="ClearCacheButton"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Scrollable Content -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="24" MaxWidth="960" HorizontalAlignment="Left">
+
+                <!-- Active Operation Banner -->
+                <InfoBar
+                    x:Name="ActiveOperationInfoBar"
+                    IsOpen="{Binding ViewModel.IsActiveOperationVisible, Mode=OneWay}"
+                    Severity="Informational"
+                    IsClosable="False"
+                    Title="{Binding ViewModel.ActiveOperationTitle, Mode=OneWay}"
+                    Message="{Binding ViewModel.ActiveOperationMessage, Mode=OneWay}"
+                    AutomationProperties.Name="Active Operation Status">
+                    <InfoBar.Content>
+                        <ProgressBar
+                            IsIndeterminate="True"
+                            Maximum="100" Margin="0,8,0,0"/>
+                    </InfoBar.Content>
+                </InfoBar>
+
+                <!-- SECTION 1: UPDATES AVAILABLE -->
+                <StackPanel Spacing="12" Visibility="{Binding ViewModel.HasUpdates, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE896;" FontSize="18" Foreground="#FF9800"/>
+                        <TextBlock Text="Updates Available" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <TextBlock Text="New approved versions are available. Click 'Update' to inspect version details and confirm installation."
+                               Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                    <ItemsControl ItemsSource="{Binding ViewModel.UpdateExtensions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:ExtensionModel">
+                                <Border CornerRadius="12" Padding="18" Margin="0,0,0,12"
+                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{x:Bind IsHighlighted, Mode=OneWay, Converter={StaticResource BoolToHighlightBorderBrushConverter}}"
+                                        BorderThickness="1.5"
+                                        AutomationProperties.Name="{x:Bind DisplayName}"
+                                        AutomationProperties.AutomationId="{x:Bind Id}">
+                                    <Grid RowSpacing="12">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Header Row -->
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Glyph="&#xEB9F;" FontSize="24" Margin="0,0,12,0"
+                                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                      VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="15"/>
+                                                <TextBlock Text="{x:Bind Description}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="2" CornerRadius="10" Padding="10,4"
+                                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                                    BorderBrush="{x:Bind Status, Mode=OneWay, Converter={StaticResource ExtensionStatusToBrushConverter}}"
+                                                    BorderThickness="1" VerticalAlignment="Top">
+                                                <TextBlock Text="{x:Bind FormattedStatus, Mode=OneWay}"
+                                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ExtensionStatusToBrushConverter}}"
+                                                           FontWeight="SemiBold" FontSize="11"/>
+                                            </Border>
+                                        </Grid>
+
+                                        <!-- Metadata Specs Grid -->
+                                        <Grid Grid.Row="1" ColumnSpacing="24" RowSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="INSTALLED VERSION" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                <TextBlock Text="{x:Bind FormattedInstalledVersion, Mode=OneWay}" FontWeight="SemiBold" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="LATEST VERSION" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                <TextBlock Text="{x:Bind FormattedLatestVersion, Mode=OneWay}" FontWeight="SemiBold" FontSize="13" Foreground="#FF9800"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="REQUIRED BY" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                <TextBlock Text="{x:Bind RequiredByDisplay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Action Buttons -->
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Update"
+                                                    Style="{StaticResource AccentButtonStyle}"
+                                                    Click="OnUpdateClicked"
+                                                    Tag="{x:Bind}"
+                                                    AutomationProperties.Name="Update Extension"
+                                                    AutomationProperties.AutomationId="UpdateButton"/>
+                                            <Button Content="View Details"
+                                                    Click="OnViewDetailsClicked"
+                                                    Tag="{x:Bind}"
+                                                    AutomationProperties.Name="View Details"
+                                                    AutomationProperties.AutomationId="ViewDetailsButton"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- SECTION 2: INSTALLED EXTENSIONS -->
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Installed Extensions" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+
+                    <!-- Empty State -->
+                    <Border CornerRadius="12" Padding="24" Margin="0,0,0,8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Visibility="{Binding ViewModel.HasInstalled, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <StackPanel HorizontalAlignment="Center" Spacing="6">
+                            <FontIcon Glyph="&#xE711;" FontSize="24" Foreground="{ThemeResource TextFillColorTertiaryBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="No External Extensions Installed" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Optional acceleration components can be installed from the available list below."
+                                       Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Items Control for Installed -->
+                    <ItemsControl ItemsSource="{Binding ViewModel.InstalledExtensions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:ExtensionModel">
+                                <Border CornerRadius="12" Padding="18" Margin="0,0,0,12"
+                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{x:Bind IsHighlighted, Mode=OneWay, Converter={StaticResource BoolToHighlightBorderBrushConverter}}"
+                                        BorderThickness="1.5"
+                                        AutomationProperties.Name="{x:Bind DisplayName}"
+                                        AutomationProperties.AutomationId="{x:Bind Id}">
+                                    <Grid RowSpacing="12">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Header Row -->
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Glyph="&#xEB9F;" FontSize="24" Margin="0,0,12,0"
+                                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                      VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="15"/>
+                                                <TextBlock Text="{x:Bind Description}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="2" CornerRadius="10" Padding="10,4"
+                                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                                    BorderBrush="{x:Bind Status, Mode=OneWay, Converter={StaticResource ExtensionStatusToBrushConverter}}"
+                                                    BorderThickness="1" VerticalAlignment="Top">
+                                                <TextBlock Text="{x:Bind FormattedStatus, Mode=OneWay}"
+                                                           Foreground="{x:Bind Status, Mode=OneWay, Converter={StaticResource ExtensionStatusToBrushConverter}}"
+                                                           FontWeight="SemiBold" FontSize="11"/>
+                                            </Border>
+                                        </Grid>
+
+                                        <!-- Metadata Specs Grid -->
+                                        <Grid Grid.Row="1" ColumnSpacing="24" RowSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="INSTALLED VERSION" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                <TextBlock Text="{x:Bind FormattedInstalledVersion, Mode=OneWay}" FontWeight="SemiBold" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="LATEST VERSION" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                <TextBlock Text="{x:Bind FormattedLatestVersion, Mode=OneWay}" FontWeight="SemiBold" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="CACHE SIZE" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                <TextBlock Text="{x:Bind FormattedCacheSize, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="3">
+                                                <TextBlock Text="REQUIRED BY" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                <TextBlock Text="{x:Bind RequiredByDisplay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Action Buttons: Strictly show valid actions per current state -->
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Update"
+                                                    Style="{StaticResource AccentButtonStyle}"
+                                                    Visibility="{x:Bind CanUpdateAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                    Click="OnUpdateClicked"
+                                                    Tag="{x:Bind}"
+                                                    AutomationProperties.Name="Update Extension"
+                                                    AutomationProperties.AutomationId="UpdateButton"/>
+                                            <Button Content="Repair"
+                                                    Visibility="{x:Bind CanRepairAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                    Click="OnRepairClicked"
+                                                    Tag="{x:Bind}"
+                                                    AutomationProperties.Name="Repair Extension"
+                                                    AutomationProperties.AutomationId="RepairButton"/>
+                                            <Button Content="Reinstall"
+                                                    Visibility="{x:Bind CanReinstallAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                    Click="OnReinstallClicked"
+                                                    Tag="{x:Bind}"
+                                                    AutomationProperties.Name="Reinstall Extension"
+                                                    AutomationProperties.AutomationId="ReinstallButton"/>
+                                            <Button Content="Clean Reinstall"
+                                                    Visibility="{x:Bind CanCleanReinstallAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                    Click="OnCleanReinstallClicked"
+                                                    Tag="{x:Bind}"
+                                                    AutomationProperties.Name="Clean Reinstall Extension"
+                                                    AutomationProperties.AutomationId="CleanReinstallButton"/>
+                                            <Button Content="Remove"
+                                                    Visibility="{x:Bind CanRemoveAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                    Click="OnRemoveClicked"
+                                                    Tag="{x:Bind}"
+                                                    AutomationProperties.Name="Remove Extension"
+                                                    AutomationProperties.AutomationId="RemoveButton"/>
+                                            <Button Content="View Details"
+                                                    Click="OnViewDetailsClicked"
+                                                    Tag="{x:Bind}"
+                                                    AutomationProperties.Name="View Details"
+                                                    AutomationProperties.AutomationId="ViewDetailsButton"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- SECTION 3: OPTIONAL / AVAILABLE EXTENSIONS -->
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Optional &amp; Available Extensions" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+
+                    <!-- Empty State -->
+                    <Border CornerRadius="12" Padding="24" Margin="0,0,0,8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            Visibility="{Binding ViewModel.HasAvailable, Mode=OneWay, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                        <StackPanel HorizontalAlignment="Center" Spacing="6">
+                            <FontIcon Glyph="&#xE73E;" FontSize="24" Foreground="#4CAF50" HorizontalAlignment="Center"/>
+                            <TextBlock Text="All Available Extensions Are Installed" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Your Axora workstation has all optional components enabled."
+                                       Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Items Control for Available -->
+                    <ItemsControl ItemsSource="{Binding ViewModel.AvailableExtensions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:ExtensionModel">
+                                <Border CornerRadius="12" Padding="18" Margin="0,0,0,12"
+                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{x:Bind IsHighlighted, Mode=OneWay, Converter={StaticResource BoolToHighlightBorderBrushConverter}}"
+                                        BorderThickness="1.5"
+                                        AutomationProperties.Name="{x:Bind DisplayName}"
+                                        AutomationProperties.AutomationId="{x:Bind Id}">
+                                    <Grid RowSpacing="12">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Header Row -->
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Glyph="&#xEB9F;" FontSize="24" Margin="0,0,12,0"
+                                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                      VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="15"/>
+                                                <TextBlock Text="{x:Bind Description}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="2" CornerRadius="10" Padding="10,4"
+                                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1" VerticalAlignment="Top">
+                                                <TextBlock Text="{x:Bind FormattedStatus, Mode=OneWay}"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           FontWeight="SemiBold" FontSize="11"/>
+                                            </Border>
+                                        </Grid>
+
+                                        <!-- Metadata Specs Grid -->
+                                        <Grid Grid.Row="1" ColumnSpacing="24" RowSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="LATEST VERSION" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                <TextBlock Text="{x:Bind FormattedLatestVersion, Mode=OneWay}" FontWeight="SemiBold" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="ARCHITECTURE" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                <TextBlock Text="{x:Bind SupportedArchitecture}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="REQUIRED BY" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                                <TextBlock Text="{x:Bind RequiredByDisplay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Action Buttons -->
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Install"
+                                                    Style="{StaticResource AccentButtonStyle}"
+                                                    Visibility="{x:Bind CanInstallAction, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                    Click="OnInstallClicked"
+                                                    Tag="{x:Bind}"
+                                                    AutomationProperties.Name="Install Extension"
+                                                    AutomationProperties.AutomationId="InstallButton"/>
+                                            <Button Content="View Details"
+                                                    Click="OnViewDetailsClicked"
+                                                    Tag="{x:Bind}"
+                                                    AutomationProperties.Name="View Details"
+                                                    AutomationProperties.AutomationId="ViewDetailsButton"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- SECTION 4: MAINTENANCE & CACHE -->
+                <StackPanel Spacing="12" Margin="0,0,0,32">
+                    <TextBlock Text="Maintenance &amp; Storage Ownership" Style="{StaticResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+
+                    <Border CornerRadius="12" Padding="20"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Spacing="16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Extension Cache Subsystem" FontWeight="SemiBold" FontSize="14"/>
+                                    <TextBlock Text="{Binding ViewModel.CacheLocation, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <TextBlock Text="TOTAL CACHE USAGE" FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" HorizontalAlignment="Right"/>
+                                    <TextBlock Text="{Binding ViewModel.FormattedCacheSize, Mode=OneWay}"
+                                               FontWeight="SemiBold" FontSize="16" HorizontalAlignment="Right"
+                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <MenuFlyoutSeparator/>
+
+                            <!-- Explanatory Safety Policy -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Clean Reinstall &amp; Cache Policy" FontWeight="SemiBold" FontSize="12"/>
+                                <TextBlock Text="AXORA isolates all extension downloads, installers, and temporary runtime packages. Purging cache or performing Clean Reinstall will NEVER delete or modify your user documents, exported images, projects, or application settings."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Clear Extension Cache"
+                                        Command="{Binding ViewModel.ClearCacheCommand}"
+                                        AutomationProperties.Name="Purge Extension Cache"
+                                        AutomationProperties.AutomationId="ClearCacheMaintenanceButton"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

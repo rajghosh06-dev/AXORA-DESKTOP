@@ -24,6 +24,7 @@ public sealed partial class CommandPaletteDialog : UserControl
         "Navigate → Encrypted Vault",
         "Navigate → Flashcard Studio",
         "Navigate → Mobile Link",
+        "Navigate → Download Manager",
         "Navigate → Settings",
         "Vault: Encrypt File",
         "Vault: Decrypt File",
@@ -137,6 +138,7 @@ public sealed partial class CommandPaletteDialog : UserControl
             "Navigate → Encrypted Vault"       => "Vault",
             "Navigate → Flashcard Studio"      => "Flashcards",
             "Navigate → Mobile Link"           => "MobileLink",
+            "Navigate → Download Manager"      => "DownloadManager",
             "Navigate → Settings"              => "Settings",
             _ => null
         };

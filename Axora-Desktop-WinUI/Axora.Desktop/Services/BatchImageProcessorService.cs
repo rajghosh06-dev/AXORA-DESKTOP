@@ -34,10 +34,100 @@ public sealed class BatchImageProcessorService : IBatchImageProcessorService
     };
 
     private readonly ILogger<BatchImageProcessorService> _logger;
+    private readonly IDependencyManager? _dependencyManager;
+    private static bool? _imageMagickAvailable;
+    private static readonly object _probeLock = new();
 
-    public BatchImageProcessorService(ILogger<BatchImageProcessorService> logger)
+    public bool IsImageMagickAvailable
+    {
+        get
+        {
+            if (_imageMagickAvailable.HasValue) return _imageMagickAvailable.Value;
+            if (_dependencyManager != null)
+            {
+                return _dependencyManager.IsDependencyReady("imagemagick");
+            }
+            lock (_probeLock)
+            {
+                if (_imageMagickAvailable.HasValue) return _imageMagickAvailable.Value;
+                _imageMagickAvailable = ProbeImageMagick();
+                return _imageMagickAvailable.Value;
+            }
+        }
+    }
+
+    public static void SetImageMagickAvailableForTesting(bool? available)
+    {
+        lock (_probeLock)
+        {
+            _imageMagickAvailable = available;
+        }
+    }
+
+    private static string GetMagickExecutablePath()
+    {
+        try
+        {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var managedExe = Path.Combine(localAppData, "Axora", "Extensions", "imagemagick", "magick.exe");
+            if (File.Exists(managedExe)) return managedExe;
+        }
+        catch { }
+        return "magick";
+    }
+
+    private static bool ProbeImageMagick()
+    {
+        try
+        {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var managedExe = Path.Combine(localAppData, "Axora", "Extensions", "imagemagick", "magick.exe");
+            if (File.Exists(managedExe)) return true;
+
+            var pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (!string.IsNullOrEmpty(pathEnv))
+            {
+                foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    try
+                    {
+                        if (File.Exists(Path.Combine(dir.Trim(), "magick.exe")) ||
+                            File.Exists(Path.Combine(dir.Trim(), "magick")))
+                            return true;
+                    }
+                    catch { }
+                }
+            }
+
+            using var proc = Process.Start(new ProcessStartInfo
+            {
+                FileName = "magick",
+                Arguments = "-version",
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+
+            if (proc != null)
+            {
+                proc.WaitForExit(1000);
+                return proc.ExitCode == 0;
+            }
+        }
+        catch
+        {
+            // Process launch failure indicates ImageMagick is not installed/reachable
+        }
+        return false;
+    }
+
+    public BatchImageProcessorService(
+        ILogger<BatchImageProcessorService> logger,
+        IDependencyManager? dependencyManager = null)
     {
         _logger = logger;
+        _dependencyManager = dependencyManager;
     }
 
     public async Task<IReadOnlyList<string>> ScanFolderForImagesAsync(
@@ -138,7 +228,16 @@ public sealed class BatchImageProcessorService : IBatchImageProcessorService
                         {
                             if (options.Engine == ImageProcessingEngine.ImageMagickStudio)
                             {
-                                await ProcessWithImageMagickAsync(job, options, ct);
+                                if (IsImageMagickAvailable)
+                                {
+                                    await ProcessWithImageMagickAsync(job, options, ct);
+                                }
+                                else
+                                {
+                                    _logger.LogWarning("ImageMagick is unavailable on this system. Falling back to native Windows Hardware WIC engine for {File}.", job.SourceFilePath);
+                                    job.ErrorMessage = "ImageMagick unavailable; processed with native WIC engine.";
+                                    await ProcessWithWicAsync(job, options, ct);
+                                }
                             }
                             else
                             {
@@ -251,7 +350,7 @@ public sealed class BatchImageProcessorService : IBatchImageProcessorService
 
         var psi = new ProcessStartInfo
         {
-            FileName = "magick",
+            FileName = GetMagickExecutablePath(),
             Arguments = string.Join(" ", args),
             CreateNoWindow = true,
             UseShellExecute = false,

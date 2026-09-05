@@ -42,6 +42,8 @@ public sealed class BatchImageOptions
 
 public interface IBatchImageProcessorService
 {
+    bool IsImageMagickAvailable { get; }
+
     Task ProcessBatchAsync(
         IReadOnlyList<BatchImageJob> jobs,
         BatchImageOptions options,
