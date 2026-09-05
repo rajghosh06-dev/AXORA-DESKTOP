@@ -92,3 +92,33 @@ To stop the cycle of *"Agent says done -> User finds broken UI -> Agent fixes ->
 7. **VISUAL AUDIT**: Check layout against the 25-Point Checklist (margins, typography, no clipping at minimum window bounds).
 8. **REGRESSION**: Run full automated test suite to guarantee adjacent features remain unbroken.
 9. **EVIDENCE REPORT**: Record exact execution logs and output in the final summary.
+
+---
+
+## 5. Extension & Download Manager Test Protocol (Phase W1.5)
+
+### 5.1 Multi-Layered Validation Matrix
+Phase W1.5 introduces a comprehensive test protocol ensuring external extensions and dependencies can never crash the host application or corrupt user state:
+
+1. **Unit & Adversarial Logic Tests (`Axora.Desktop.Tests`)**:
+   - **Registration**: Default seeding of ImageMagick (`W1.5_1a-e`), custom registration/unregistration (`W1.5_1f-g`).
+   - **Semantic Versioning**: Standard comparison, patch/minor/major boundaries, prefix stripping, null comparisons (`W1.5_2a-i`).
+   - **State Machine Permissibility**: Action validity matrices for `NotInstalled`, `Installed`, `UpdateAvailable`, `RepairRequired`, `Corrupted`, `Failed`, and `IsBusy` locks (`W1.5_3a-g`).
+   - **Detection Probing**: Detection of missing, installed, and update-available states (`W1.5_4a-6b`).
+   - **Validation & Corruption**: 0-byte binary detection, automatic status transition to `Corrupted`, repair flag assertion (`W1.5_7a-d`).
+   - **Downloader Security**: Insecure HTTP rejection, domain whitelist enforcement, SHA-256 mismatch rejection (`W1.5_8a-e`).
+   - **Cache Integrity & Non-Destructive Cleanup**: Cache size calculation, directory isolation, proof that files outside the cache root are strictly untouched (`W1.5_9a-e`).
+   - **Repair & Reinstall Cycles**: Full simulation of repair, reinstall, and clean reinstall cycles (`W1.5_10a-12c`).
+   - **Concurrency & Cancellation**: Thread-safe lock concurrency, cancellation token aborts, and 500-iteration rapid property change thrashing (`W1.5_13-15`).
+   - **Deep Linking & Page Integration**: Extension highlighting and consumer service dependency checks (`W1.5_16a-17c`).
+
+2. **Windows UI Automation Tests (`test-winui-ui.ps1`)**:
+   - Navigation to Download Manager in footer (`NavDownloadManager`).
+   - Discovery of `CheckForUpdatesButton`, `ClearCacheButton`, and ImageMagick card.
+   - Discovery of `DependencyStatusControl` in `BatchImagePage.xaml`.
+   - Invocation of `OpenDownloadManagerButton` in `DependencyStatusControl` and verification of deep link navigation with highlight.
+
+3. **E2E Real Product-Flow Suite (`test-winui-product-flows.ps1`)**:
+   - Flow W-04: Batch Image Studio navigation, validation of dependency status banner, preset button interaction.
+   - Flow W-05: Route round-trip state persistence across settings, dashboard, and studios.
+

@@ -182,3 +182,26 @@ Each surface is evaluated against the automated test suite (`scripts/qa/test-ui.
    - Complex multi-field data entry forms (e.g. typing a complete multi-section resume with work experience, education, and skills in Resume Studio before clicking compile). Note: The underlying PDF/LaTeX compiler engine and LaTeX syntax safety are **100% verified via automated integration tests (59/59 WinUI assertions)**.
 3. **What Requires Physical Hardware (7.5%)**:
    - WIA Scanner physical hardware acquisition and physical Android 16 Wi-Fi Direct socket pairing. These cannot be faked in automated test runners without physical hardware.
+
+---
+
+## 7. Phase W1 Foundation Hardening Coverage Verification
+
+Phase W1 introduced and hardened critical shell and infrastructure surfaces:
+
+| Surface / Infrastructure Component | Implementation Location | Test Classification | Verification Mechanism | Status |
+|---|---|---|---|---|
+| **Global In-App InfoBar Alert** | `ShellView.xaml` (`GlobalNotificationInfoBar`), `NotificationService.cs` | **TESTED** | Unit assertions `W1.2a-f` (Title, Message, Severity, Duration, Dismiss) & UI tree presence | **PASS** |
+| **Live Theme & Accent Propagation** | `SettingsViewModel.cs`, `ThemeService.cs`, `MainWindow.cs` | **TESTED** | Unit assertions `W1.1a-f`, `test-winui-product-flows.ps1` (Flow W-01 swatch click) | **PASS** |
+| **Rapid Route Navigation Thrashing** | `ShellView.xaml.cs`, `ResumeStudioDashboardPage.xaml.cs` | **TESTED** | `test-adversarial-winui.ps1` (16 rapid transitions in ~1.5s, ContentFrame intact) | **PASS** |
+| **Batch Image WIC Engine Fallback** | `BatchImageProcessorService.cs` | **TESTED** | Unit assertions `W1.6a-f` (Simulated missing `magick.exe`, verified WIC output byte generation & job warning) | **PASS** |
+| **OCR Stream Offset Preservation** | `WinRtOcrService.cs` | **TESTED** | Unit assertions `W1.3a-c` (Original stream readable, seekable, position offset restored to 0) | **PASS** |
+| **P2P Socket Port Reuse & Shutdown** | `P2pSyncService.cs` | **TESTED** | Unit assertions `W1.4a-d` (Two sequential rapid Start/Stop cycles without `TIME_WAIT` lock) | **PASS** |
+| **Settings Persistence Observability** | `AppSettingsService.cs` | **TESTED** | Unit assertions `W1.7a-c` (Captures `LastPersistenceError` when directory is unwritable) | **PASS** |
+| **Navigation Pane Accelerator (Ctrl+\)**| `MainWindow.cs` | **TESTED** | Unit assertions `W1.9a-b` (VK_OEM_5 0xDC mapping verified distinct from VK_BACK) | **PASS** |
+
+### 7.1 Unverified Aspects (Physical Hardware Boundaries)
+- **Physical WIA Flatbed Scanner**: Verified COM wrapper enumeration and release (`W1.5`), but image acquisition from physical scanner glass requires attached hardware.
+- **Physical Multi-Node P2P Sync**: Verified local listener socket binding, TLS handshake, and cancellation loops, but cross-device file transfer over air requires physical secondary device.
+- **Physical Hot-Unplug of Discrete GPU**: Verified ONNX runtime fallback path in software, but physical removal of running PCIe card requires hardware bench.
+

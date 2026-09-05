@@ -170,3 +170,45 @@ This document provides the authoritative inventory and status tracking for all r
 | **MaterialUI** | QR Code Canvas | `src/pages/MobileLink.tsx` | Canvas / SVG | Page loaded | Generates vector QR code for Android Axora companion pairing | CDP Automation | `PASS` |
 | **MaterialUI** | Color Palette Theme | `src/pages/Settings.tsx` | MD3 Color Swatches | Click color | Updates dynamic MD3 primary and secondary tonal palettes | CDP Automation | `PASS` |
 | **MaterialUI** | Clear Storage Cache | `src/pages/Settings.tsx` | Outlined Button | Click button | Clears temporary conversion and thumbnail caches | CDP Automation | `PASS` |
+
+---
+
+### I. Extension & Download Manager (Phase W1.5)
+
+| Implementation | Control / Section | Location | Control Type | Expected Action | Expected Visual Result | Automation Feasibility | Status |
+|---|---|---|---|---|---|---|---|
+| **WinUI** | Download Manager Footer Item | `Views/ShellView.xaml` | `NavigationViewItem` | Click item | Navigates to Download Manager; footer selection indicator updates | Windows UIA | `PASS` |
+| **WinUI** | Check for Updates Button | `Views/DownloadManagerPage.xaml` | Button / Accelerator (`F5`) | Click button / F5 | Queries latest versions, refreshes update list | Windows UIA | `PASS` |
+| **WinUI** | Clear Cache Button | `Views/DownloadManagerPage.xaml` | Button | Click button | Calculates and purges `%LOCALAPPDATA%\Axora\ExtensionCache\` | Windows UIA | `PASS` |
+| **WinUI** | ImageMagick Card | `Views/DownloadManagerPage.xaml` | Border / ItemsControl | Observe card | Displays name, description, installed version, latest version, status pill | Windows UIA | `PASS` |
+| **WinUI** | Action Buttons (Install/Update/Repair) | `Views/DownloadManagerPage.xaml` | Button Row | Click action | Executes user-approved dependency action or opens confirmation dialog | Windows UIA | `PASS` |
+| **WinUI** | Clean Reinstall Dialog | `Views/DownloadManagerPage.xaml` | `ContentDialog` | Click Clean Reinstall | Explains exact binary/cache deletion boundaries; prompts user confirmation | Windows UIA | `PASS` |
+| **WinUI** | DependencyStatusControl | `Controls/DependencyStatusControl.xaml` | UserControl | Page load (BatchImage) | Renders InfoBar indicating ImageMagick readiness, missing warning, or WIC fallback | Windows UIA | `PASS` |
+| **WinUI** | Open Download Manager Button | `Controls/DependencyStatusControl.xaml` | Button | Click button | Navigates to Download Manager and highlights target dependency card | Windows UIA | `PASS` |
+
+---
+
+### J. Universal Converter (Phases W2-E & W2-E.1)
+
+| Implementation | Control / Section | Location | Control Type | Expected Action | Expected Visual Result | Automation Feasibility | Status |
+|---|---|---|---|---|---|---|---|
+| **WinUI** | Universal Converter Nav Item | `Views/ShellView.xaml` | `NavigationViewItem` | Click item | Navigates to Universal Converter; active selection indicator updates | Windows UIA | `PASS` |
+| **WinUI** | Drag-and-Drop Intake Zone | `Views/UniversalConverterPage.xaml` | Border / UserControl | Drag file over / drop | Accent glow on dragover; adds valid files to queue; rejects unsupported formats | Windows UIA | `PASS` |
+| **WinUI** | "Choose Files" Button | `Views/UniversalConverterPage.xaml` | Button | Click button | Opens native multi-file picker; adds selected items to queue | Windows UIA | `PASS` |
+| **WinUI** | "Choose Folder" Button | `Views/UniversalConverterPage.xaml` | Button | Click button | Opens native folder picker; batches top-level files into queue | Windows UIA | `PASS` |
+| **WinUI** | Target Format Selector | `Views/UniversalConverterPage.xaml` | ComboBox | Select format | Filters to common supported targets across queued items (or Auto) | Windows UIA | `PASS` |
+| **WinUI** | Collision Policy Selector | `Views/UniversalConverterPage.xaml` | ComboBox | Select policy | Configures AutoRename, Overwrite, or Skip in active conversion profile | Windows UIA | `PASS` |
+| **WinUI** | Quality & DPI Options | `Views/UniversalConverterPage.xaml` | Sliders / CheckBox | Adjust settings | Binds JPEG quality (1-100), Target DPI (72-600), and metadata strip toggle | Windows UIA | `PASS` |
+| **WinUI** | Start Conversion Button | `Views/UniversalConverterPage.xaml` | Accent Button | Click button | Enqueues jobs into orchestrator, transitions button to processing state | Windows UIA | `PASS` |
+| **WinUI** | Queue Action Controls | `Views/UniversalConverterPage.xaml` | Buttons | Click action | Cancel All, Clear All, Clear Completed, Pause, Resume | Windows UIA | `PASS` |
+| **WinUI** | Queue Item Status & Action | `Views/UniversalConverterPage.xaml` | ListView Item | State change | Dynamic format icon, human status, progress ring, Retry/Cancel buttons | Windows UIA | `PASS` |
+| **WinUI** | Diagnostic Details Expander | `Views/UniversalConverterPage.xaml` | Expander | Click expand | Displays structured error code and stack trace on failed job items | Windows UIA | `PASS` |
+| **WinUI** | Open Output Folder Button | `Views/UniversalConverterPage.xaml` | Button | Click button | Opens Explorer at effective output directory or first converted output | Windows UIA | `PASS` |
+| **WinUI** | Responsive Density (960x600 & 1200x800) | `Views/UniversalConverterPage.xaml` | SplitGrid / ScrollViewer | Window resize | Clamped min-size, zero text clipping or ellipsis overflow | Windows UIA | `PASS` |
+| **WinUI** | Real Pipeline Runtime Execution | `Program.cs` (`--qa-converter-real-gate`) | CLI / Pipeline | Execute conversion | Real WIC, PDF, and Markdown conversions with filesystem verification | Windows UIA / CLI | `PASS` |
+| **WinUI** | Live GUI User Journey: Intake to Output (W2-E.2) | `UniversalConverterPage.xaml` | Real GUI Workflow | UI Intake & Start | Real file intake, JPG created, magic bytes verified, completed state | Windows UIA | `PASS` |
+| **WinUI** | Live GUI Collision Policy AutoRename (W2-E.2) | `UniversalConverterPage.xaml` | Real GUI Workflow | Run on duplicate | `(1)` suffix file created on disk, original destination untouched | Windows UIA | `PASS` |
+| **WinUI** | Live GUI Controlled Error & Retry (W2-E.2) | `UniversalConverterPage.xaml` | Real GUI Workflow | Lock source & Retry | Handled gracefully as Failed; unlock and click Retry leads to Succeeded | Windows UIA | `PASS` |
+| **WinUI** | Live GUI Accessibility & AutomationId Audit (W2-E.2) | `UniversalConverterPage.xaml` | All 13 Controls | Audit properties | All 13 enumerated controls passed defined UIA property checks (AutomationId and accessible names) | Windows UIA | `PASS` |
+
+

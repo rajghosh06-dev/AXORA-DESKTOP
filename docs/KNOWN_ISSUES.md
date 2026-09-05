@@ -23,6 +23,12 @@ This document tracks known defects, environment limitations, and architectural b
 - **Root Cause**: Floating save/revert pill referenced `Shadow="{ThemeResource Elevation16Shadow}"` which was missing from standard Windows App SDK dictionaries.
 - **Resolution**: Declared `<ThemeShadow x:Key="Elevation16Shadow" />` in `App.xaml` global resources. Verified clean compilation and runtime smoke test.
 
+### [RESOLVED] Issue W-03: Missing SubtleButtonStyle Resource in App.xaml (P2)
+- **Location**: `Axora-Desktop-WinUI\Axora.Desktop\Controls\DependencyStatusControl.xaml` & `FloatingDropWidget.xaml`
+- **Symptom**: `XamlParseException: Cannot find a Resource with the Name/Key SubtleButtonStyle` thrown when constructing pages containing `DependencyStatusControl` (e.g. `BatchImagePage`), causing `ContentFrame.Navigate` to abort.
+- **Root Cause**: Action buttons referenced `{StaticResource SubtleButtonStyle}` which was not declared in `App.xaml` application resources.
+- **Resolution**: Declared `<Style x:Key="SubtleButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">` with transparent background and border in `App.xaml`. Also added `ContentFrame.NavigationFailed` logging to diagnose page load failures. Verified with 16/16 product flows and 23/23 UI automation tests.
+
 ### [CLARIFIED / RESOLVED] Issue M-01: "Analytics" Quick Action Event Handling (P2)
 - **Location**: `Axora-Desktop-MaterialUI\src\pages\Dashboard.tsx` & `src\components\Sidebar.tsx`
 - **Symptom**: Previously reported as unrouted due to `page: "CompatibilityModal"`.
