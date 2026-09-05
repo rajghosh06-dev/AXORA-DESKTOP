@@ -34,6 +34,13 @@
             <x:Double x:Key="AxoraDisplayFontSize">28.0</x:Double>
 
             <FontFamily x:Key="AxoraFontFamily">Segoe UI Variable Display</FontFamily>
+
+            <!-- Reusable Button Styles -->
+            <Style x:Key="SubtleButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

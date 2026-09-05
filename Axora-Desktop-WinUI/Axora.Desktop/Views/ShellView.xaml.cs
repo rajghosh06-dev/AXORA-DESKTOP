@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.Storage;
+using Axora.Desktop.Services.Contracts;
 using Axora.Desktop.ViewModels;
 
 namespace Axora.Desktop.Views;
@@ -19,6 +20,9 @@ public sealed partial class ShellView : UserControl
     public Controls.FileDropZoneOverlay DropOverlay { get; private set; } = null!;
     public Controls.CommandPaletteDialog CommandPalette { get; private set; } = null!;
 
+    private readonly INotificationService _notificationService = App.GetService<INotificationService>();
+    private DispatcherTimer? _notificationTimer;
+
     public ShellView()
     {
         InitializeComponent();
@@ -28,6 +32,15 @@ public sealed partial class ShellView : UserControl
         NavView ??= FindName("NavView") as NavigationView;
         ContentFrame ??= FindName("ContentFrame") as Frame;
         OverlayContainer ??= FindName("OverlayContainer") as Grid;
+        GlobalNotificationInfoBar ??= FindName("GlobalNotificationInfoBar") as InfoBar;
+
+        if (GlobalNotificationInfoBar != null)
+        {
+            GlobalNotificationInfoBar.Closed += (_, _) => _notificationTimer?.Stop();
+        }
+
+        _notificationService.NotificationRequested += OnNotificationRequested;
+        _notificationService.DismissRequested += OnNotificationDismissRequested;
 
         DropOverlay = new Controls.FileDropZoneOverlay { Visibility = Visibility.Collapsed };
         OverlayContainer?.Children.Add(DropOverlay);
@@ -48,12 +61,74 @@ public sealed partial class ShellView : UserControl
         {
             NavView.Loaded += NavView_Loaded;
             NavView.ItemInvoked += NavView_ItemInvoked;
+            NavView.SelectionChanged += NavView_SelectionChanged;
         }
 
         if (ContentFrame != null)
         {
             ContentFrame.Navigated += ContentFrame_Navigated;
+            ContentFrame.NavigationFailed += (s, e) =>
+            {
+                System.Diagnostics.Debug.WriteLine($"[NAVIGATION FAILED] Target: {e.SourcePageType}, Error: {e.Exception}");
+                Console.WriteLine($"[NAVIGATION FAILED] Target: {e.SourcePageType}, Error: {e.Exception}");
+            };
         }
+    }
+
+    private void OnNotificationRequested(object? sender, NotificationEventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            GlobalNotificationInfoBar ??= FindName("GlobalNotificationInfoBar") as InfoBar;
+            if (GlobalNotificationInfoBar == null) return;
+
+            GlobalNotificationInfoBar.Title = e.Title ?? string.Empty;
+            GlobalNotificationInfoBar.Message = e.Message;
+            GlobalNotificationInfoBar.Severity = e.Severity switch
+            {
+                NotificationSeverity.Informational => InfoBarSeverity.Informational,
+                NotificationSeverity.Success => InfoBarSeverity.Success,
+                NotificationSeverity.Warning => InfoBarSeverity.Warning,
+                NotificationSeverity.Error => InfoBarSeverity.Error,
+                _ => InfoBarSeverity.Informational
+            };
+            GlobalNotificationInfoBar.IsOpen = true;
+
+            if (_notificationTimer == null)
+            {
+                _notificationTimer = new DispatcherTimer();
+                _notificationTimer.Tick += (s, args) =>
+                {
+                    _notificationTimer.Stop();
+                    if (GlobalNotificationInfoBar != null)
+                    {
+                        GlobalNotificationInfoBar.IsOpen = false;
+                    }
+                };
+            }
+            else
+            {
+                _notificationTimer.Stop();
+            }
+
+            if (e.Duration.HasValue && e.Duration.Value > TimeSpan.Zero)
+            {
+                _notificationTimer.Interval = e.Duration.Value;
+                _notificationTimer.Start();
+            }
+        });
+    }
+
+    private void OnNotificationDismissRequested(object? sender, EventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _notificationTimer?.Stop();
+            if (GlobalNotificationInfoBar != null)
+            {
+                GlobalNotificationInfoBar.IsOpen = false;
+            }
+        });
     }
 
     // ── Navigation ────────────────────────────────────────────────────────────
@@ -91,22 +166,47 @@ public sealed partial class ShellView : UserControl
         }
     }
 
-    public void NavigateTo(string pageTag)
+    private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        if (args.IsSettingsSelected)
+        {
+            NavigateTo("Settings");
+            return;
+        }
+
+        if (args.SelectedItemContainer is NavigationViewItem item && item.Tag is string tag)
+        {
+            NavigateTo(tag);
+        }
+        else if (args.SelectedItem is NavigationViewItem selItem && selItem.Tag is string selTag)
+        {
+            NavigateTo(selTag);
+        }
+        else if (args.SelectedItem is string title)
+        {
+            var matched = ShellViewModel.PageMap.FirstOrDefault(
+                kvp => kvp.Value.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(matched.Key))
+                NavigateTo(matched.Key);
+        }
+    }
+
+    public void NavigateTo(string pageTag, object? parameter = null)
     {
         if (!ShellViewModel.PageMap.TryGetValue(pageTag, out var pageInfo)) return;
 
-        ViewModel.CurrentPageTitle = pageInfo.Title;
         ContentFrame ??= FindName("ContentFrame") as Frame;
         if (ContentFrame == null) return;
 
-        // Skip only if we are already on that exact page with no back stack.
-        bool alreadyThere = ContentFrame.CurrentSourcePageType == pageInfo.PageType
-                            && !ContentFrame.CanGoBack;
-        if (!alreadyThere)
-        {
-            ContentFrame.Navigate(pageInfo.PageType, null,
-                new Microsoft.UI.Xaml.Media.Animation.EntranceNavigationTransitionInfo());
-        }
+        // Skip if already on the exact target page type and no parameter specified
+        if (ContentFrame.CurrentSourcePageType == pageInfo.PageType && parameter == null) return;
+
+        // Top-level navigation: clear backstack to prevent page accumulation & memory leaks
+        ContentFrame.BackStack.Clear();
+
+        ViewModel.CurrentPageTitle = pageInfo.Title;
+        ContentFrame.Navigate(pageInfo.PageType, parameter,
+            new Microsoft.UI.Xaml.Media.Animation.EntranceNavigationTransitionInfo());
     }
 
     private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
@@ -139,9 +239,10 @@ public sealed partial class ShellView : UserControl
 
         if (effectivePageType == typeof(SettingsPage))
         {
-            if (NavView.SelectedItem != NavView.SettingsItem)
+            NavSettings ??= FindName("NavSettings") as NavigationViewItem;
+            if (NavSettings != null && (NavigationViewItem?)NavView.SelectedItem != NavSettings)
             {
-                NavView.SelectedItem = NavView.SettingsItem;
+                NavView.SelectedItem = NavSettings;
             }
             return;
         }
@@ -190,6 +291,14 @@ public sealed partial class ShellView : UserControl
         else if (ContentFrame?.Content is VaultPage vault)
         {
             vault.SetInputFromDrop(items);
+        }
+        else if (ContentFrame?.Content is UniversalConverterPage converter)
+        {
+            var filePaths = items.OfType<StorageFile>().Select(f => f.Path).ToList();
+            if (filePaths.Count > 0)
+            {
+                converter.ViewModel.AddFiles(filePaths);
+            }
         }
     }
 }

@@ -104,6 +104,35 @@ public static class NativeFilePickerHelper
     {
         return await RunOnUiThreadAsync(async () =>
         {
+            // Automated QA Gate Hook: Read file list from test environment or test intake file if active
+            try
+            {
+                string? envFiles = Environment.GetEnvironmentVariable("AXORA_TEST_PICKER_FILES");
+                if (!string.IsNullOrWhiteSpace(envFiles))
+                {
+                    var paths = envFiles.Split(new[] { ';', '|', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                                        .Select(p => p.Trim())
+                                        .Where(File.Exists)
+                                        .ToList();
+                    if (paths.Count > 0) return (IReadOnlyList<string>)paths;
+                }
+
+                string tempTestFile = Path.Combine(Path.GetTempPath(), "axora_test_picker_files.txt");
+                if (File.Exists(tempTestFile))
+                {
+                    var lines = File.ReadAllLines(tempTestFile)
+                                    .Select(l => l.Trim())
+                                    .Where(l => !string.IsNullOrWhiteSpace(l) && File.Exists(l))
+                                    .ToList();
+                    if (lines.Count > 0)
+                    {
+                        try { File.Delete(tempTestFile); } catch { }
+                        return (IReadOnlyList<string>)lines;
+                    }
+                }
+            }
+            catch { /* ignore */ }
+
             var hwnd = GetActiveWindowHandle();
 
             // Tier 1: Modern WinRT FileOpenPicker initialized with HWND
@@ -190,6 +219,28 @@ public static class NativeFilePickerHelper
     {
         return await RunOnUiThreadAsync(async () =>
         {
+            // Automated QA Gate Hook: Read folder from test environment or test intake file if active
+            try
+            {
+                string? envFolder = Environment.GetEnvironmentVariable("AXORA_TEST_PICKER_FOLDER");
+                if (!string.IsNullOrWhiteSpace(envFolder) && Directory.Exists(envFolder.Trim()))
+                {
+                    return envFolder.Trim();
+                }
+
+                string tempFolderFile = Path.Combine(Path.GetTempPath(), "axora_test_picker_folder.txt");
+                if (File.Exists(tempFolderFile))
+                {
+                    string folder = File.ReadAllText(tempFolderFile).Trim();
+                    if (Directory.Exists(folder))
+                    {
+                        try { File.Delete(tempFolderFile); } catch { }
+                        return folder;
+                    }
+                }
+            }
+            catch { /* ignore */ }
+
             var hwnd = GetActiveWindowHandle();
 
             // Tier 1: Modern WinRT FolderPicker initialized with HWND

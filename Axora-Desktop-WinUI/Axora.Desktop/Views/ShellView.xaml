@@ -72,6 +72,16 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
 
+                <NavigationViewItem Content="Universal Converter"
+                                    Tag="UniversalConverter"
+                                    x:Name="NavUniversalConverter"
+                                    AutomationProperties.Name="Universal Converter"
+                                    AutomationProperties.AutomationId="NavUniversalConverter">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8AB;"/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+
                 <NavigationViewItemSeparator/>
 
                 <NavigationViewItem Content="Encrypted Vault"
@@ -101,8 +111,17 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
-            <!-- Footer: Settings -->
+            <!-- Footer: System / Download Manager & Settings -->
             <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="Download Manager"
+                                    Tag="DownloadManager"
+                                    x:Name="NavDownloadManager"
+                                    AutomationProperties.Name="Download Manager"
+                                    AutomationProperties.AutomationId="NavDownloadManager">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE896;"/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Content="Settings"
                                     Tag="Settings"
                                     x:Name="NavSettings">
@@ -115,6 +134,15 @@
             <!-- Content Frame -->
             <Frame x:Name="ContentFrame" />
         </NavigationView>
+
+        <!-- Global Notification Host -->
+        <InfoBar
+            x:Name="GlobalNotificationInfoBar"
+            AutomationProperties.Name="Global Notification Alert"
+            VerticalAlignment="Top"
+            HorizontalAlignment="Stretch"
+            Margin="24,12,24,0"
+            IsOpen="False" />
 
         <!-- Overlay Container for DropZone and CommandPalette -->
         <Grid x:Name="OverlayContainer" />

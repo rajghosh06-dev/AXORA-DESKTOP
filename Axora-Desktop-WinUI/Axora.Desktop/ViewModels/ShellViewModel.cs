@@ -33,9 +33,11 @@ public sealed partial class ShellViewModel : ObservableObject
             ["ResumeStudioEditor"]  = (typeof(Views.ResumeStudioPage),           "Resume Studio — Editor"),
             ["BatchImage"]          = (typeof(Views.BatchImagePage),             "Batch Image Studio"),
             ["Compressor"]          = (typeof(Views.CompressorPage),             "Intelligent Compressor"),
+            ["UniversalConverter"]  = (typeof(Views.UniversalConverterPage),     "Universal Converter"),
             ["Vault"]               = (typeof(Views.VaultPage),                  "Encrypted Vault"),
             ["Flashcards"]          = (typeof(Views.FlashcardsPage),             "Flashcard Studio"),
             ["MobileLink"]          = (typeof(Views.MobileLinkPage),             "Mobile Link"),
+            ["DownloadManager"]     = (typeof(Views.DownloadManagerPage),        "Download Manager"),
             ["Settings"]            = (typeof(Views.SettingsPage),               "Settings"),
         };
 

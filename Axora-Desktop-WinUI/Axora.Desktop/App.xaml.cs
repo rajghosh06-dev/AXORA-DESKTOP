@@ -31,8 +31,11 @@ public sealed partial class App : Application
 
         UnhandledException += (s, e) =>
         {
-            Log($"[App] UnhandledException: {e.Message} - {e.Exception}");
-            e.Handled = true;
+            Log($"[App.UnhandledException] Message: {e.Message} | HResult: 0x{e.Exception.HResult:X8}\n{e.Exception}");
+            if (e.Exception is not (OutOfMemoryException or AccessViolationException))
+            {
+                e.Handled = true;
+            }
         };
 
         try
@@ -62,6 +65,8 @@ public sealed partial class App : Application
             {
                 // ── Core Infrastructure Services (Singletons) ──────────────────────
                 services.AddSingleton<IAppSettingsService, AppSettingsService>();
+                services.AddSingleton<INotificationService, NotificationService>();
+                services.AddSingleton<IThemeService, ThemeService>();
                 services.AddSingleton<IDownloadManagerService, DownloadManagerService>();
                 services.AddSingleton<IDocumentProcessorService, DocumentProcessorService>();
                 services.AddSingleton<IBatchImageProcessorService, BatchImageProcessorService>();
@@ -81,6 +86,30 @@ public sealed partial class App : Application
                 services.AddSingleton<IResumePdfCompilerService, ResumePdfCompilerService>();
                 services.AddSingleton<IAtsOptimizerService, AtsOptimizerService>();
 
+                // ── Extension & Dependency Manager Services (Phase W1.5) ──────────
+                services.AddSingleton<IExtensionCacheService, ExtensionCacheService>();
+                services.AddSingleton<IExtensionRegistry, ExtensionRegistry>();
+                services.AddSingleton<IVersionDetector, VersionDetector>();
+                services.AddSingleton<IExtensionValidator, ExtensionValidator>();
+                services.AddSingleton<IExtensionDownloader, ExtensionDownloader>();
+                services.AddSingleton<IExtensionInstaller, ExtensionInstaller>();
+                services.AddSingleton<IExtensionRepairService, ExtensionRepairService>();
+                services.AddSingleton<IDependencyManager, DependencyManager>();
+
+                // ── Universal Converter Engines & Orchestrator (Phase W2-B/W2-C/W2-D) ──────────
+                services.AddSingleton<WicImageConversionEngine>();
+                services.AddSingleton<IConversionEngine>(sp => sp.GetRequiredService<WicImageConversionEngine>());
+                services.AddSingleton<PdfDocumentConversionEngine>();
+                services.AddSingleton<IConversionEngine>(sp => sp.GetRequiredService<PdfDocumentConversionEngine>());
+                services.AddSingleton<TextMarkdownConversionEngine>();
+                services.AddSingleton<IConversionEngine>(sp => sp.GetRequiredService<TextMarkdownConversionEngine>());
+                services.AddSingleton<WindowsPdfRendererConversionEngine>();
+                services.AddSingleton<IConversionEngine>(sp => sp.GetRequiredService<WindowsPdfRendererConversionEngine>());
+                services.AddSingleton<IConversionOrchestrator, ConversionOrchestrator>(sp =>
+                    new ConversionOrchestrator(
+                        sp.GetServices<IConversionEngine>(),
+                        logger: sp.GetService<ILogger<ConversionOrchestrator>>()));
+
                 // ── ViewModels (Singletons for state retention across navigation) ─────
                 services.AddSingleton<ShellViewModel>();
                 services.AddSingleton<DashboardViewModel>();
@@ -88,9 +117,11 @@ public sealed partial class App : Application
                 services.AddSingleton<ResumeStudioViewModel>();
                 services.AddSingleton<BatchImageViewModel>();
                 services.AddSingleton<CompressorViewModel>();
+                services.AddSingleton<UniversalConverterViewModel>();
                 services.AddSingleton<VaultViewModel>();
                 services.AddSingleton<FlashcardsViewModel>();
                 services.AddSingleton<MobileLinkViewModel>();
+                services.AddSingleton<DownloadManagerViewModel>();
                 services.AddSingleton<SettingsViewModel>();
             })
             .Build();
@@ -104,7 +135,85 @@ public sealed partial class App : Application
 
     public static T? TryGetService<T>() where T : class
     {
+        if (AppHost == null) return null;
         return AppHost.Services.GetService<T>();
+    }
+
+    private static readonly object _shutdownLock = new();
+    private static System.Threading.Tasks.Task? _shutdownTask;
+
+    public static System.Threading.Tasks.Task ShutdownAsync()
+    {
+        lock (_shutdownLock)
+        {
+            _shutdownTask ??= DoShutdownAsync();
+            return _shutdownTask;
+        }
+    }
+
+    private static async System.Threading.Tasks.Task DoShutdownAsync()
+    {
+        string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "startup.log");
+        void Log(string msg) => File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
+
+        Log("App.ShutdownAsync initiated.");
+
+        try
+        {
+            var tray = TryGetService<ITrayService>();
+            if (tray != null)
+            {
+                try
+                {
+                    tray.Remove();
+                    if (tray is IDisposable disposableTray)
+                    {
+                        disposableTray.Dispose();
+                    }
+                    Log("TrayService removed and disposed.");
+                }
+                catch (Exception ex)
+                {
+                    Log($"Tray disposal error: {ex.Message}");
+                }
+            }
+
+            var p2p = TryGetService<IP2pSyncService>();
+            if (p2p != null)
+            {
+                try
+                {
+                    await p2p.StopAsync().ConfigureAwait(false);
+                    Log("P2pSyncService stopped.");
+                }
+                catch (Exception ex)
+                {
+                    Log($"P2P stop error: {ex.Message}");
+                }
+            }
+
+            if (AppHost != null)
+            {
+                try
+                {
+                    await AppHost.StopAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                    AppHost.Dispose();
+                    Log("AppHost stopped and disposed.");
+                }
+                catch (Exception ex)
+                {
+                    Log($"AppHost shutdown error: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"ShutdownAsync fatal error: {ex}");
+        }
+        finally
+        {
+            Log("App.ShutdownAsync completed.");
+        }
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
@@ -119,10 +228,26 @@ public sealed partial class App : Application
             MainAppWindow = new MainWindow();
             Log("MainWindow instantiated.");
 
+            MainAppWindow.Closed += async (_, _) =>
+            {
+                Log("MainWindow.Closed triggered. Commencing graceful shutdown.");
+                await ShutdownAsync();
+            };
+
+            var themeService = GetService<IThemeService>();
+            themeService.Initialize(MainAppWindow);
+            Log("ThemeService initialized.");
+
             MainAppWindow.Activate();
             Log("MainWindow activated.");
 
-            _ = AppHost.StartAsync();
+            AppHost.StartAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                {
+                    Log($"[AppHost] Background StartAsync failed: {t.Exception.Flatten()}");
+                }
+            }, System.Threading.Tasks.TaskScheduler.Default);
             Log("AppHost.StartAsync dispatched.");
 
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(MainAppWindow);
@@ -135,7 +260,13 @@ public sealed partial class App : Application
             if (settings.AutoStartP2pEngine)
             {
                 var p2p = GetService<IP2pSyncService>();
-                _ = p2p.StartAsync();
+                p2p.StartAsync().ContinueWith(t =>
+                {
+                    if (t.IsFaulted && t.Exception != null)
+                    {
+                        Log($"[P2P] Background StartAsync failed: {t.Exception.Flatten()}");
+                    }
+                }, System.Threading.Tasks.TaskScheduler.Default);
                 Log("P2P background sync service auto-started on launch.");
             }
         }
