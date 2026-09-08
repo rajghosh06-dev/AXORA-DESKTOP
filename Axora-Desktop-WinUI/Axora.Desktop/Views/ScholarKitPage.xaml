@@ -85,6 +85,38 @@
                         </StackPanel>
                     </Button>
 
+                    <!-- Save Study Session (Phase W3-B) -->
+                    <Button x:Name="BtnSaveSession"
+                            AutomationProperties.AutomationId="BtnSaveSession"
+                            AutomationProperties.Name="Save Session"
+                            Command="{Binding ViewModel.SaveCurrentSessionCommand}"
+                            ToolTipService.ToolTip="Save Study Session to Local Library">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE74E;" FontSize="12"/>
+                            <TextBlock Text="Save Session" FontSize="11.5" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Session Management Flyout (Phase W3-B) -->
+                    <DropDownButton x:Name="BtnSessionMenu"
+                                    AutomationProperties.AutomationId="BtnSessionMenu"
+                                    AutomationProperties.Name="Session"
+                                    Content="Session">
+                        <DropDownButton.Flyout>
+                            <MenuFlyout Placement="Bottom">
+                                <MenuFlyoutItem Text="Save Study Session" Command="{Binding ViewModel.SaveCurrentSessionCommand}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74E;"/></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="Load Recent Session" Command="{Binding ViewModel.LoadMostRecentSessionCommand}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B7;"/></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="Refresh Saved Sessions" Command="{Binding ViewModel.RefreshSavedSessionsListCommand}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE72C;"/></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+
                     <!-- Export Dropdown -->
                     <DropDownButton Content="Export">
                         <DropDownButton.Flyout>
@@ -186,6 +218,9 @@
 
                             <!-- Sample Loader Button -->
                             <Button HorizontalAlignment="Stretch" Margin="0,2,0,0"
+                                    x:Name="BtnLoadSampleAcademicPaper"
+                                    AutomationProperties.AutomationId="BtnLoadSampleAcademicPaper"
+                                    AutomationProperties.Name="Load Sample Academic Paper"
                                     Command="{Binding ViewModel.LoadSampleAcademicPaperCommand}"
                                     Background="{ThemeResource LayerFillColorDefaultBrush}" Padding="4,5">
                                 <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
@@ -217,6 +252,16 @@
                             <TextBlock Text="{Binding ViewModel.ImportedFileName}"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"
                                        FontSize="12" TextTrimming="CharacterEllipsis"/>
+
+                            <!-- Persistence Status (Phase W3-B) -->
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE753;" FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock x:Name="TxtPersistenceStatus"
+                                           AutomationProperties.AutomationId="TxtPersistenceStatus"
+                                           Text="{Binding ViewModel.PersistenceStatus}"
+                                           FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
 
                             <!-- 3-Pill Metric Bar -->
                             <Grid ColumnSpacing="6">

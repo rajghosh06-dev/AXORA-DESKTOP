@@ -79,6 +79,17 @@ public sealed partial class ConversionJobUiModel : ObservableObject, IDisposable
     public string? DiagnosticDetails => Job.DiagnosticDetails;
     public bool HasDiagnostics => !string.IsNullOrWhiteSpace(Job.DiagnosticDetails);
 
+    // ── Telemetry Presentation Properties ─────────────────────────────────
+    public string FormattedElapsedTime => Job.FormattedElapsedTime;
+    public string FormattedThroughput => Job.FormattedThroughput;
+    public string FormattedSavings => Job.FormattedSavings;
+    public double? SavingsPercentage => Job.SavingsPercentage;
+    public long? SizeDeltaBytes => Job.SizeDeltaBytes;
+    public bool HasCompletedTelemetry => Job.State == ConversionJobState.Succeeded && Job.OutputSizeBytes > 0;
+    public string TelemetrySummaryText => HasCompletedTelemetry
+        ? $"{FormattedElapsedTime}  ·  {FormattedSavings}  ·  {FormattedThroughput}"
+        : (Job.ElapsedTime > TimeSpan.Zero ? FormattedElapsedTime : string.Empty);
+
     [ObservableProperty]
     private bool _isErrorExpanded;
 
@@ -118,6 +129,13 @@ public sealed partial class ConversionJobUiModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasDiagnostics));
         OnPropertyChanged(nameof(TargetExtensionDisplay));
         OnPropertyChanged(nameof(TransformationDisplay));
+        OnPropertyChanged(nameof(FormattedElapsedTime));
+        OnPropertyChanged(nameof(FormattedThroughput));
+        OnPropertyChanged(nameof(FormattedSavings));
+        OnPropertyChanged(nameof(SavingsPercentage));
+        OnPropertyChanged(nameof(SizeDeltaBytes));
+        OnPropertyChanged(nameof(HasCompletedTelemetry));
+        OnPropertyChanged(nameof(TelemetrySummaryText));
     }
 
     public void Refresh()

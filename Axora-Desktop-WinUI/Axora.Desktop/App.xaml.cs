@@ -80,11 +80,62 @@ public sealed partial class App : Application
                 services.AddSingleton<ITpmSecurityProfileService, TpmSecurityProfileService>();
                 services.AddSingleton<IPdfAnnotationService, PdfAnnotationService>();
                 services.AddSingleton<IWindowsAiService, DirectMlEmbeddingService>();
+                services.AddSingleton<IOcrCapabilityStateProvider, WindowsOcrCapabilityStateProvider>();
+                services.AddSingleton<IOcrEngine, WindowsMediaOcrEngine>();
                 services.AddSingleton<IOcrService, WinRtOcrService>();
                 services.AddSingleton<IPdfExtractionService, PdfExtractionService>();
                 services.AddSingleton<IScannerService, WiaScannerService>();
                 services.AddSingleton<IResumePdfCompilerService, ResumePdfCompilerService>();
                 services.AddSingleton<IAtsOptimizerService, AtsOptimizerService>();
+                services.AddSingleton<IScholarPersistenceMigrator, ScholarPersistenceMigrator>();
+                services.AddSingleton<IScholarLibraryService, ScholarLibraryService>();
+
+                // ── Scholar Document Extraction Services (Phase W3-C.2) ───────────
+                services.AddSingleton<IDocumentPageBuilder, DocumentPageBuilder>();
+                services.AddSingleton<IDocumentFormatDetector, DocumentFormatDetector>();
+                services.AddSingleton<PlainTextExtractorEngine>();
+                services.AddSingleton<IDocumentExtractorEngine>(sp => sp.GetRequiredService<PlainTextExtractorEngine>());
+                services.AddSingleton<DelimitedTextExtractorEngine>();
+                services.AddSingleton<IDocumentExtractorEngine>(sp => sp.GetRequiredService<DelimitedTextExtractorEngine>());
+                services.AddSingleton<MarkdownExtractorEngine>();
+                services.AddSingleton<IDocumentExtractorEngine>(sp => sp.GetRequiredService<MarkdownExtractorEngine>());
+                services.AddSingleton<LocalHtmlExtractorEngine>();
+                services.AddSingleton<IDocumentExtractorEngine>(sp => sp.GetRequiredService<LocalHtmlExtractorEngine>());
+
+                // ── Scholar PDF Extraction & Page Rasterizer Services (Phase W3-C.3/C.5.4) ──
+                services.AddSingleton<IPdfPageRasterizer, WindowsPdfPageRasterizer>();
+                services.AddSingleton<PdfDocumentExtractorEngine>();
+                services.AddSingleton<IPdfDocumentExtractorEngine>(sp => sp.GetRequiredService<PdfDocumentExtractorEngine>());
+                services.AddSingleton<IDocumentExtractorEngine>(sp => sp.GetRequiredService<PdfDocumentExtractorEngine>());
+
+                // ── Scholar Word DOCX Extraction Services (Phase W3-C.4) ───────────
+                services.AddSingleton<DocxDocumentExtractorEngine>();
+                services.AddSingleton<IDocumentExtractorEngine>(sp => sp.GetRequiredService<DocxDocumentExtractorEngine>());
+
+                // ── Scholar Raster Image Extraction Services (Phase W3-C.5.3) ───────
+                services.AddSingleton<RasterImageDocumentExtractorEngine>();
+                services.AddSingleton<IDocumentExtractorEngine>(sp => sp.GetRequiredService<RasterImageDocumentExtractorEngine>());
+
+                // ── Scholar Multi-Frame TIFF Extraction Services (Phase W3-C.5.5) ────
+                services.AddSingleton<TiffDocumentExtractorEngine>();
+                services.AddSingleton<IDocumentExtractorEngine>(sp => sp.GetRequiredService<TiffDocumentExtractorEngine>());
+
+                // ── Scholar Document Normalization Foundation & Extraction Orchestrator (Phase W3-C.6.1/C.6.4) ────────
+                services.AddSingleton<TextNormalizer>();
+                services.AddSingleton<ITextNormalizer>(sp => sp.GetRequiredService<TextNormalizer>());
+                services.AddSingleton<IPassageChunker, PassageChunker>();
+                services.AddSingleton<IBoundedContextWindowBuilder, BoundedContextWindowBuilder>();
+                services.AddSingleton<IScholarExtractionOrchestrator>(sp =>
+                    new ScholarExtractionOrchestrator(
+                        sp.GetRequiredService<IDocumentFormatDetector>(),
+                        sp.GetServices<IDocumentExtractorEngine>(),
+                        sp.GetRequiredService<ITextNormalizer>(),
+                        sp.GetRequiredService<IDocumentPageBuilder>(),
+                        sp.GetService<IPassageChunker>(),
+                        sp.GetService<IScholarLibraryService>(),
+                        sp.GetService<ILogger<ScholarExtractionOrchestrator>>()));
+                services.AddSingleton<ScholarExtractionOrchestrator>(sp =>
+                    (ScholarExtractionOrchestrator)sp.GetRequiredService<IScholarExtractionOrchestrator>());
 
                 // ── Extension & Dependency Manager Services (Phase W1.5) ──────────
                 services.AddSingleton<IExtensionCacheService, ExtensionCacheService>();

@@ -54,6 +54,7 @@ public sealed class ConversionOrchestrator : IConversionOrchestrator
     private volatile bool _isProcessing;
     private volatile bool _isPaused;
     private volatile bool _isDisposed;
+    private Stopwatch? _batchStopwatch;
 
     private readonly ConcurrentDictionary<string, Task> _runningJobTasks = new();
 
@@ -268,6 +269,11 @@ public sealed class ConversionOrchestrator : IConversionOrchestrator
         _processingCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _isProcessing = true;
         _isPaused = false;
+        _batchStopwatch ??= Stopwatch.StartNew();
+        if (!_batchStopwatch.IsRunning)
+        {
+            _batchStopwatch.Restart();
+        }
 
         _schedulerTask = Task.Run(() => SchedulerLoopAsync(_processingCts.Token));
         _dispatchSignal.Set();
@@ -662,6 +668,7 @@ public sealed class ConversionOrchestrator : IConversionOrchestrator
         {
             if (token.IsCancellationRequested)
             {
+                job.ElapsedTime = sw.Elapsed;
                 job.TryTransitionTo(ConversionJobState.Cancelled);
                 return;
             }
@@ -711,12 +718,14 @@ public sealed class ConversionOrchestrator : IConversionOrchestrator
 
             if (result.Status == ConversionJobStatus.Cancelled || token.IsCancellationRequested)
             {
+                job.ElapsedTime = sw.Elapsed;
                 job.TryTransitionTo(ConversionJobState.Cancelled);
                 return;
             }
 
             if (!result.IsSuccess)
             {
+                job.ElapsedTime = sw.Elapsed;
                 job.ErrorMessage = result.ErrorMessage ?? "Conversion failed.";
                 job.DiagnosticDetails = result.DiagnosticDetails;
                 job.TryTransitionTo(ConversionJobState.Failed);
@@ -727,6 +736,7 @@ public sealed class ConversionOrchestrator : IConversionOrchestrator
             var validation = await ConversionOutputValidator.ValidateStagedOutputAsync(stagingPath, tgtExt, token);
             if (!validation.IsValid)
             {
+                job.ElapsedTime = sw.Elapsed;
                 job.ErrorMessage = validation.ErrorMessage ?? "Staged output failed validation.";
                 job.TryTransitionTo(ConversionJobState.Failed);
                 return;
@@ -736,6 +746,7 @@ public sealed class ConversionOrchestrator : IConversionOrchestrator
             var sourceHashAfter = await ConversionOutputValidator.ComputeFileSha256Async(job.SourceFilePath, token);
             if (!string.Equals(sourceHashBefore, sourceHashAfter, StringComparison.Ordinal))
             {
+                job.ElapsedTime = sw.Elapsed;
                 job.ErrorMessage = "Source file was modified during conversion! Source immutability violated.";
                 job.TryTransitionTo(ConversionJobState.Failed);
                 return;
@@ -758,11 +769,13 @@ public sealed class ConversionOrchestrator : IConversionOrchestrator
         }
         catch (OperationCanceledException)
         {
+            job.ElapsedTime = sw.Elapsed;
             job.TryTransitionTo(ConversionJobState.Cancelled);
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Unexpected exception during job execution: {JobId}", job.JobId);
+            job.ElapsedTime = sw.Elapsed;
             job.ErrorMessage = ex.Message;
             job.DiagnosticDetails = ex.ToString();
             job.TryTransitionTo(ConversionJobState.Failed);
@@ -811,12 +824,43 @@ public sealed class ConversionOrchestrator : IConversionOrchestrator
             int cancelled = _queue.Count(j => j.State == ConversionJobState.Cancelled);
             int skipped = _queue.Count(j => j.State == ConversionJobState.Skipped);
             int running = _queue.Count(j => j.State == ConversionJobState.Running || j.State == ConversionJobState.Cancelling);
+            int pending = _queue.Count(j => j.State == ConversionJobState.Pending || j.State == ConversionJobState.Queued || j.State == ConversionJobState.Validating);
 
             int finished = succeeded + failed + cancelled + skipped;
             double overallPct = total > 0 ? ((double)finished / total) * 100.0 : 0.0;
 
-            long totalBytes = _queue.Where(j => j.State == ConversionJobState.Succeeded).Sum(j => j.OutputSizeBytes);
+            var succeededJobs = _queue.Where(j => j.State == ConversionJobState.Succeeded).ToList();
+            long totalInputBytes = succeededJobs.Sum(j => j.SourceFileSizeBytes);
+            long totalOutputBytes = succeededJobs.Sum(j => j.OutputSizeBytes);
+            long totalBytes = totalInputBytes;
+
+            TimeSpan succeededElapsedTotal = TimeSpan.FromMilliseconds(succeededJobs.Sum(j => j.ElapsedTime.TotalMilliseconds));
+            int remaining = total - finished;
+
+            TimeSpan? eta = ConversionTelemetry.CalculateEta(succeeded, succeededElapsedTotal, remaining);
+
+            TimeSpan batchElapsed = _batchStopwatch?.Elapsed ?? succeededElapsedTotal;
+            double? throughput = ConversionTelemetry.CalculateThroughput(totalBytes, batchElapsed);
+            double? savingsPct = ConversionTelemetry.CalculateSavingsPercentage(totalInputBytes, succeeded > 0 ? totalOutputBytes : null);
+            long? sizeDelta = ConversionTelemetry.CalculateSizeDelta(totalInputBytes, succeeded > 0 ? totalOutputBytes : null);
+
             var currentRunning = _queue.FirstOrDefault(j => j.State == ConversionJobState.Running);
+
+            var telemetry = new QueueTelemetry
+            {
+                TotalJobs = total,
+                PendingJobs = pending,
+                RunningJobs = running,
+                CompletedJobs = succeeded,
+                FailedJobs = failed,
+                CancelledJobs = cancelled,
+                SkippedJobs = skipped,
+                TotalInputBytes = totalInputBytes,
+                TotalOutputBytes = totalOutputBytes,
+                TotalBytesProcessed = totalBytes,
+                BatchElapsedTime = batchElapsed,
+                EstimatedRemaining = eta
+            };
 
             return new QueueProgressReport
             {
@@ -826,8 +870,17 @@ public sealed class ConversionOrchestrator : IConversionOrchestrator
                 CancelledJobs = cancelled,
                 SkippedJobs = skipped,
                 RunningJobs = running,
+                PendingJobs = pending,
                 OverallProgressPercentage = overallPct,
                 TotalBytesProcessed = totalBytes,
+                TotalInputBytes = totalInputBytes,
+                TotalOutputBytes = totalOutputBytes,
+                TotalElapsedTime = batchElapsed,
+                EstimatedRemaining = eta,
+                ThroughputBytesPerSecond = throughput,
+                SavingsPercentage = savingsPct,
+                SizeDeltaBytes = sizeDelta,
+                Telemetry = telemetry,
                 CurrentJobName = currentRunning?.SourceFileName
             };
         }

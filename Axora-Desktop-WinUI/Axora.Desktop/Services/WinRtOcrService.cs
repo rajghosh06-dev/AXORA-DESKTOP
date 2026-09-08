@@ -1,122 +1,61 @@
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Windows.Globalization;
-using Windows.Graphics.Imaging;
-using Windows.Media.Ocr;
-using Windows.Storage;
-using Windows.Storage.Streams;
+using Axora.Desktop.Models;
 using Axora.Desktop.Services.Contracts;
 
 namespace Axora.Desktop.Services;
 
 /// <summary>
-/// WinRT OCR service using <see cref="OcrEngine"/> with installed OS language packs.
+/// WinRT OCR service wrapper routing through <see cref="IOcrEngine"/> and <see cref="IOcrCapabilityStateProvider"/>.
+/// Preserves legacy IOcrService caller contracts while delegating execution to the modern decoupled engine.
 /// All processing is fully on-device — zero cloud or network calls.
 /// </summary>
 public sealed class WinRtOcrService : IOcrService
 {
-    private readonly ILogger<WinRtOcrService> _logger;
-    private readonly OcrEngine? _engine;
+    private readonly IOcrEngine _ocrEngine;
+    private readonly IOcrCapabilityStateProvider _capabilityProvider;
+    private readonly ILogger<WinRtOcrService>? _logger;
 
-    public bool IsAvailable => _engine is not null;
-    public string ActiveLanguage { get; }
+    public bool IsAvailable => _capabilityProvider.State == OcrCapabilityState.OcrAvailable;
+    public string ActiveLanguage => _capabilityProvider.ActiveLanguageTag ?? "unavailable";
 
-    public WinRtOcrService(ILogger<WinRtOcrService> logger)
+    public WinRtOcrService(
+        IOcrEngine ocrEngine,
+        IOcrCapabilityStateProvider capabilityProvider,
+        ILogger<WinRtOcrService>? logger = null)
     {
+        _ocrEngine = ocrEngine ?? throw new ArgumentNullException(nameof(ocrEngine));
+        _capabilityProvider = capabilityProvider ?? throw new ArgumentNullException(nameof(capabilityProvider));
         _logger = logger;
+    }
 
-        // Try to initialise with the user's profile language first
-        _engine = OcrEngine.TryCreateFromUserProfileLanguages();
-
-        if (_engine is not null)
-        {
-            ActiveLanguage = _engine.RecognizerLanguage.LanguageTag;
-            _logger.LogInformation("WinRT OCR engine initialised. Language: {Lang}", ActiveLanguage);
-        }
-        else
-        {
-            // Fallback: English
-            var en = new Language("en-US");
-            if (OcrEngine.IsLanguageSupported(en))
-            {
-                _engine = OcrEngine.TryCreateFromLanguage(en);
-                ActiveLanguage = "en-US";
-                _logger.LogWarning("Profile language not supported by OCR. Falling back to en-US.");
-            }
-            else
-            {
-                ActiveLanguage = "unavailable";
-                _logger.LogError("No supported OCR language found on this device.");
-            }
-        }
+    public WinRtOcrService(ILogger<WinRtOcrService>? logger = null)
+        : this(new WindowsMediaOcrEngine(), new WindowsOcrCapabilityStateProvider(), logger)
+    {
     }
 
     /// <inheritdoc/>
     public async Task<string> ExtractTextAsync(Stream imageStream, CancellationToken ct = default)
     {
-        if (_engine is null)
-            throw new InvalidOperationException("OCR engine is unavailable. Install a Windows language pack.");
+        ArgumentNullException.ThrowIfNull(imageStream);
 
-        return await Task.Run(async () =>
+        if (!IsAvailable)
         {
-            ct.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("OCR engine is unavailable. Install a Windows language pack.");
+        }
 
-            long originalPos = imageStream.CanSeek ? imageStream.Position : 0;
-
-            try
-            {
-                // Copy to an isolated InMemoryRandomAccessStream so disposing it does NOT close the caller's imageStream
-                using var inMemoryStream = new InMemoryRandomAccessStream();
-                using (var outStream = inMemoryStream.AsStreamForWrite())
-                {
-                    await imageStream.CopyToAsync(outStream, ct);
-                    await outStream.FlushAsync(ct);
-                }
-                inMemoryStream.Seek(0);
-
-                var decoder = await BitmapDecoder.CreateAsync(inMemoryStream);
-                // FIX-2: Dispose SoftwareBitmap after OCR to prevent unmanaged WinRT memory leak on repeated scans
-                using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
-                    BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
-
-                // WinRT OCR requires Bgra8 format — convert if needed
-                SoftwareBitmap? convertedBitmap = null;
-                SoftwareBitmap targetBitmap = softwareBitmap;
-                try
-                {
-                    if (softwareBitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8)
-                    {
-                        convertedBitmap = SoftwareBitmap.Convert(softwareBitmap,
-                            BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
-                        targetBitmap = convertedBitmap;
-                    }
-
-                    ct.ThrowIfCancellationRequested();
-
-                    var ocrResult = await _engine.RecognizeAsync(targetBitmap);
-
-                    // Reconstruct text preserving line breaks
-                    var lines = ocrResult.Lines.Select(l => l.Text);
-                    return string.Join(Environment.NewLine, lines);
-                }
-                finally
-                {
-                    convertedBitmap?.Dispose();
-                }
-            }
-            finally
-            {
-                if (imageStream.CanSeek)
-                {
-                    try { imageStream.Position = originalPos; } catch { }
-                }
-            }
-        }, ct);
+        var result = await _ocrEngine.RecognizeImageAsync(imageStream, null, ct);
+        return result.Text;
     }
 
     /// <inheritdoc/>
     public async Task<string> ExtractTextFromFileAsync(string filePath, CancellationToken ct = default)
     {
-        using var fileStream = File.OpenRead(filePath);
+        ArgumentNullException.ThrowIfNull(filePath);
+        using var fileStream = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         return await ExtractTextAsync(fileStream, ct);
     }
 }

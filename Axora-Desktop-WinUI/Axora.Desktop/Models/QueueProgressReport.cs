@@ -11,8 +11,17 @@ public sealed record QueueProgressReport
     public int CancelledJobs { get; init; }
     public int SkippedJobs { get; init; }
     public int RunningJobs { get; init; }
+    public int PendingJobs { get; init; }
     public double OverallProgressPercentage { get; init; }
     public long TotalBytesProcessed { get; init; }
+    public long TotalInputBytes { get; init; }
+    public long TotalOutputBytes { get; init; }
+    public TimeSpan TotalElapsedTime { get; init; } = TimeSpan.Zero;
+    public TimeSpan? EstimatedRemaining { get; init; }
+    public double? ThroughputBytesPerSecond { get; init; }
+    public double? SavingsPercentage { get; init; }
+    public long? SizeDeltaBytes { get; init; }
+    public QueueTelemetry? Telemetry { get; init; }
     public string? CurrentJobName { get; init; }
 
     public int FinishedJobs => CompletedJobs + FailedJobs + CancelledJobs + SkippedJobs;

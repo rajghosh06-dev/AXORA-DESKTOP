@@ -176,14 +176,216 @@
                                         AutomationProperties.Name="Choose Destination Folder"
                                         AutomationProperties.AutomationId="ChangeOutputFolderButton"/>
                             </StackPanel>
+                        </StackPanel>
+                    </Border>
 
-                            <!-- Metadata Preservation Switch -->
-                            <ToggleSwitch Header="Metadata Handling"
-                                          IsOn="{Binding ViewModel.StripMetadata, Mode=TwoWay}"
-                                          OnContent="Strip Metadata (Privacy Mode)"
-                                          OffContent="Preserve Metadata"
-                                          AutomationProperties.Name="Metadata Handling Toggle"
-                                          AutomationProperties.AutomationId="MetadataHandlingToggle"/>
+                    <!-- Optimization & Quality Presets Shelf -->
+                    <Border CornerRadius="12" Padding="16"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Optimization &amp; Quality" FontWeight="SemiBold" FontSize="13"/>
+
+                            <!-- Format Capability Status Card -->
+                            <Border CornerRadius="8" Padding="12,8"
+                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    AutomationProperties.Name="Format Optimization Capabilities"
+                                    AutomationProperties.AutomationId="FormatCapabilityCard">
+                                <StackPanel Spacing="4">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <FontIcon Glyph="&#xE946;" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                        <TextBlock Text="{Binding ViewModel.CurrentFormatCapabilities.FormatDisplayName, Mode=OneWay}"
+                                                   FontWeight="SemiBold" FontSize="12"
+                                                   AutomationProperties.AutomationId="FormatDisplayNameTextBlock"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding ViewModel.FormatSummaryNote, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="WrapWholeWords"
+                                               AutomationProperties.AutomationId="FormatCapabilitySummaryTextBlock"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Preset Selector -->
+                            <ComboBox Header="Optimization Preset"
+                                      ItemsSource="{Binding ViewModel.AvailablePresets}"
+                                      SelectedItem="{Binding ViewModel.SelectedPreset, Mode=TwoWay}"
+                                      DisplayMemberPath="DisplayName"
+                                      HorizontalAlignment="Stretch"
+                                      AutomationProperties.Name="Optimization Preset"
+                                      AutomationProperties.AutomationId="PresetSelectorComboBox"/>
+
+                            <!-- Preset Description -->
+                            <TextBlock Text="{Binding ViewModel.PresetDescriptionText, Mode=OneWay}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="WrapWholeWords"
+                                       AutomationProperties.AutomationId="PresetDescriptionTextBlock"/>
+
+                            <!-- Preset Lock Status -->
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <FontIcon Glyph="&#xE72E;" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock Text="{Binding ViewModel.PresetLockStatusText, Mode=OneWay}"
+                                           FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           AutomationProperties.AutomationId="PresetLockStatusTextBlock"/>
+                            </StackPanel>
+
+                            <!-- Effective Summary Grid -->
+                            <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                    CornerRadius="8" Padding="12,10"
+                                    AutomationProperties.Name="Effective Summary"
+                                    AutomationProperties.AutomationId="EffectiveSummaryGrid">
+                                <Grid ColumnSpacing="12" RowSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Quality Summary -->
+                                    <StackPanel Grid.Row="0" Grid.Column="0">
+                                        <TextBlock Text="Quality" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding ViewModel.EffectiveQualityDisplay, Mode=OneWay}"
+                                                   FontWeight="SemiBold" FontSize="12"
+                                                   AutomationProperties.AutomationId="EffectiveQualityTextBlock"/>
+                                    </StackPanel>
+
+                                    <!-- Max Dimension Summary -->
+                                    <StackPanel Grid.Row="0" Grid.Column="1">
+                                        <TextBlock Text="Max Dimension" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding ViewModel.EffectiveMaxDimensionText, Mode=OneWay}"
+                                                   FontWeight="SemiBold" FontSize="12"
+                                                   AutomationProperties.AutomationId="EffectiveDimensionTextBlock"/>
+                                    </StackPanel>
+
+                                    <!-- Target DPI Summary -->
+                                    <StackPanel Grid.Row="1" Grid.Column="0">
+                                        <TextBlock Text="Target DPI" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding ViewModel.EffectiveTargetDpiText, Mode=OneWay}"
+                                                   FontWeight="SemiBold" FontSize="12"
+                                                   AutomationProperties.AutomationId="EffectiveDpiTextBlock"/>
+                                    </StackPanel>
+
+                                    <!-- Metadata Summary -->
+                                    <StackPanel Grid.Row="1" Grid.Column="1">
+                                        <TextBlock Text="Metadata" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding ViewModel.EffectiveMetadataText, Mode=OneWay}"
+                                                   FontWeight="SemiBold" FontSize="12"
+                                                   AutomationProperties.AutomationId="EffectiveMetadataTextBlock"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Custom Parameters Panel (Unlocked when Custom preset is selected) -->
+                            <StackPanel Spacing="10"
+                                        AutomationProperties.Name="Custom Parameters Panel"
+                                        AutomationProperties.AutomationId="CustomParametersPanel">
+                                <TextBlock Text="Custom Settings" FontWeight="SemiBold" FontSize="12"
+                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+
+                                <!-- Quality Slider & Number -->
+                                <StackPanel Spacing="4">
+                                    <Grid>
+                                        <TextBlock Text="Quality" Style="{StaticResource CaptionTextBlockStyle}"/>
+                                        <TextBlock Text="{Binding ViewModel.CustomQualityText, Mode=OneWay}"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   FontWeight="SemiBold"
+                                                   HorizontalAlignment="Right"
+                                                   AutomationProperties.AutomationId="CustomQualityTextBlock"/>
+                                    </Grid>
+                                    <Slider Minimum="1" Maximum="100"
+                                            Value="{Binding ViewModel.CustomQuality, Mode=TwoWay}"
+                                            IsEnabled="{Binding ViewModel.IsQualityControlEnabled, Mode=OneWay}"
+                                            StepFrequency="1"
+                                            AutomationProperties.Name="Quality Slider"
+                                            AutomationProperties.AutomationId="QualitySlider"/>
+                                    <TextBlock Text="{Binding ViewModel.QualityApplicabilityText, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="WrapWholeWords"
+                                               AutomationProperties.AutomationId="QualityApplicabilityHintTextBlock"/>
+                                </StackPanel>
+
+                                <!-- Max Dimension ComboBox -->
+                                <StackPanel Spacing="4">
+                                    <ComboBox Header="Max Dimension"
+                                              ItemsSource="{Binding ViewModel.AvailableDimensionOptions}"
+                                              SelectedItem="{Binding ViewModel.SelectedDimensionOption, Mode=TwoWay}"
+                                              IsEnabled="{Binding ViewModel.IsDimensionControlEnabled, Mode=OneWay}"
+                                              DisplayMemberPath="DisplayName"
+                                              HorizontalAlignment="Stretch"
+                                              AutomationProperties.Name="Max Dimension"
+                                              AutomationProperties.AutomationId="MaxDimensionComboBox"/>
+                                    <TextBlock Text="{Binding ViewModel.DimensionExplanationText, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="WrapWholeWords"
+                                               AutomationProperties.AutomationId="DimensionExplanationTextBlock"/>
+                                </StackPanel>
+
+                                <!-- Target DPI ComboBox -->
+                                <StackPanel Spacing="4">
+                                    <ComboBox Header="Target DPI"
+                                              ItemsSource="{Binding ViewModel.AvailableDpiOptions}"
+                                              SelectedItem="{Binding ViewModel.SelectedDpiOption, Mode=TwoWay}"
+                                              IsEnabled="{Binding ViewModel.IsDpiControlEnabled, Mode=OneWay}"
+                                              DisplayMemberPath="DisplayName"
+                                              HorizontalAlignment="Stretch"
+                                              AutomationProperties.Name="Target DPI"
+                                              AutomationProperties.AutomationId="TargetDpiComboBox"/>
+                                    <TextBlock Text="{Binding ViewModel.DpiExplanationText, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="WrapWholeWords"
+                                               AutomationProperties.AutomationId="DpiExplanationTextBlock"/>
+                                </StackPanel>
+
+                                <!-- Metadata Handling Toggle (Preserves exact AutomationProperties.AutomationId="MetadataHandlingToggle") -->
+                                <StackPanel Spacing="4">
+                                    <ToggleSwitch Header="Metadata Handling"
+                                                  IsOn="{Binding ViewModel.StripMetadata, Mode=TwoWay}"
+                                                  IsEnabled="{Binding ViewModel.IsMetadataControlEnabled, Mode=OneWay}"
+                                                  OnContent="Strip (Privacy Mode)"
+                                                  OffContent="Preserve Supported Properties"
+                                                  AutomationProperties.Name="Metadata Handling Toggle"
+                                                  AutomationProperties.AutomationId="MetadataHandlingToggle"/>
+                                    <TextBlock Text="{Binding ViewModel.MetadataExplanationText, Mode=OneWay}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="WrapWholeWords"
+                                               AutomationProperties.AutomationId="MetadataExplanationTextBlock"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Format-Aware Optimization Guidance Expander -->
+                            <Expander Header="Format &amp; Quality Guidance"
+                                      HorizontalAlignment="Stretch"
+                                      IsExpanded="False"
+                                      AutomationProperties.Name="Format and Quality Guidance"
+                                      AutomationProperties.AutomationId="OptimizationGuidanceExpander">
+                                <StackPanel Spacing="6" Padding="4">
+                                    <TextBlock Text="• JPEG: Quality slider controls lossy DCT compression (1–100)."
+                                               Style="{StaticResource CaptionTextBlockStyle}"/>
+                                    <TextBlock Text="• WebP: Quality parameter supported; Q=100 engages lossless compression."
+                                               Style="{StaticResource CaptionTextBlockStyle}"/>
+                                    <TextBlock Text="• PNG, BMP, TIFF: Lossless encoding; quality compression does not apply."
+                                               Style="{StaticResource CaptionTextBlockStyle}"/>
+                                    <TextBlock Text="• DPI Resolution: Target raster DPI embedded in image file metadata."
+                                               Style="{StaticResource CaptionTextBlockStyle}"/>
+                                    <TextBlock Text="• Dimension Limiting: Downscales bounding box proportionally without upscaling."
+                                               Style="{StaticResource CaptionTextBlockStyle}"/>
+                                    <TextBlock Text="• Privacy Stripping: Strips EXIF, XMP, IPTC, and GPS location metadata tags."
+                                               Style="{StaticResource CaptionTextBlockStyle}"/>
+                                </StackPanel>
+                            </Expander>
+
                         </StackPanel>
                     </Border>
 
@@ -281,6 +483,60 @@
                         <ProgressBar Value="{Binding ViewModel.OverallProgress, Mode=OneWay}"
                                      Maximum="100" CornerRadius="4" Height="6"
                                      AutomationProperties.Name="Conversion Progress Bar"/>
+
+                        <!-- Queue Telemetry Summary Shelf -->
+                        <Border CornerRadius="8" Padding="12,8" Margin="0,4,0,0"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                Visibility="{Binding ViewModel.HasQueueTelemetry, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                AutomationProperties.Name="Queue Telemetry Summary"
+                                AutomationProperties.AutomationId="QueueTelemetrySummaryCard">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Processed Sizes -->
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Processed" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding ViewModel.QueueOutputVsInputText, Mode=OneWay}"
+                                               FontWeight="SemiBold" FontSize="12"
+                                               TextTrimming="CharacterEllipsis"
+                                               AutomationProperties.AutomationId="QueueProcessedBytesTextBlock"/>
+                                </StackPanel>
+
+                                <!-- Size Delta / Savings -->
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Size Delta" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding ViewModel.QueueSavingsFormatted, Mode=OneWay}"
+                                               FontWeight="SemiBold" FontSize="12"
+                                               TextTrimming="CharacterEllipsis"
+                                               AutomationProperties.AutomationId="QueueSavingsTextBlock"/>
+                                </StackPanel>
+
+                                <!-- Processing Rate -->
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Throughput" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding ViewModel.QueueThroughputFormatted, Mode=OneWay}"
+                                               FontWeight="SemiBold" FontSize="12"
+                                               TextTrimming="CharacterEllipsis"
+                                               AutomationProperties.AutomationId="QueueThroughputTextBlock"/>
+                                </StackPanel>
+
+                                <!-- Estimated Remaining Time -->
+                                <StackPanel Grid.Column="3">
+                                    <TextBlock Text="Est. Remaining" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding ViewModel.QueueEtaFormatted, Mode=OneWay}"
+                                               FontWeight="SemiBold" FontSize="12"
+                                               TextTrimming="CharacterEllipsis"
+                                               AutomationProperties.AutomationId="QueueEtaTextBlock"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
                     </StackPanel>
 
                     <!-- Queue ListView with Empty State -->
@@ -345,6 +601,14 @@
                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                                 </StackPanel>
 
+                                                <!-- Completed Telemetry Summary -->
+                                                <TextBlock Text="{x:Bind TelemetrySummaryText, Mode=OneWay}"
+                                                           FontSize="11"
+                                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Visibility="{x:Bind HasCompletedTelemetry, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                           AutomationProperties.AutomationId="JobTelemetrySummaryTextBlock"/>
+
                                                 <!-- Error Details Block -->
                                                 <TextBlock Text="{x:Bind ErrorMessage, Mode=OneWay}"
                                                            FontSize="11"
@@ -363,8 +627,17 @@
                                                 <TextBlock Text="{x:Bind FormattedOutputSize, Mode=OneWay}"
                                                            Style="{StaticResource CaptionTextBlockStyle}"
                                                            HorizontalAlignment="Right"
-                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                                            Visibility="{x:Bind CanOpen, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                                <TextBlock Text="{x:Bind FormattedElapsedTime, Mode=OneWay}"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                           HorizontalAlignment="Right"
+                                                           FontSize="11"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           Visibility="{x:Bind CanOpen, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                           AutomationProperties.AutomationId="JobElapsedTextBlock"/>
                                             </StackPanel>
 
                                             <!-- Status Label -->

@@ -42,4 +42,18 @@ public sealed record ConversionProfile
         MetadataPolicy = MetadataHandling.Preserve,
         CollisionMode = CollisionPolicy.AutoRename
     };
+
+    /// <summary>
+    /// ConversionProfile generated from the canonical Balanced optimization preset.
+    /// </summary>
+    public static ConversionProfile Balanced => OptimizationPresetCatalog.Balanced.ToProfile();
+
+    /// <summary>
+    /// Creates a ConversionProfile from a canonical OptimizationPreset.
+    /// </summary>
+    public static ConversionProfile FromPreset(OptimizationPreset preset, CollisionPolicy collisionMode = CollisionPolicy.AutoRename)
+    {
+        ArgumentNullException.ThrowIfNull(preset);
+        return preset.ToProfile(collisionMode);
+    }
 }

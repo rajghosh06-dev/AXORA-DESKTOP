@@ -84,6 +84,134 @@ public sealed partial class UniversalConverterViewModel : ObservableObject, IDis
     [ObservableProperty]
     private int _targetDpi = 150;
 
+    // ── Phase W2-F4: Queue Telemetry Observables ──────────────────────────
+    [ObservableProperty]
+    private string _queueOutputVsInputText = "0 B";
+
+    [ObservableProperty]
+    private string _queueSavingsFormatted = "—";
+
+    [ObservableProperty]
+    private string _queueThroughputFormatted = "—";
+
+    [ObservableProperty]
+    private string _queueEtaFormatted = "—";
+
+    [ObservableProperty]
+    private bool _hasQueueTelemetry;
+
+    [ObservableProperty]
+    private int _pendingJobsCount;
+
+    [ObservableProperty]
+    private int _runningJobsCount;
+
+    [ObservableProperty]
+    private int _completedJobsCount;
+
+    [ObservableProperty]
+    private int _failedJobsCount;
+
+    // ── Phase W2-F3: Optimization Presets & Custom Parameters ────────────
+    public IReadOnlyList<OptimizationPreset> AvailablePresets => OptimizationPresetCatalog.All;
+
+    [ObservableProperty]
+    private OptimizationPreset _selectedPreset = OptimizationPresetCatalog.Default;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CustomQualityText))]
+    private int _customQuality = OptimizationValidation.DefaultQuality;
+
+    [ObservableProperty]
+    private int _customMaxDimension = 0;
+
+    [ObservableProperty]
+    private int _customTargetDpi = OptimizationValidation.DefaultTargetDpi;
+
+    [ObservableProperty]
+    private MetadataHandling _customMetadataPolicy = MetadataHandling.Strip;
+
+    [ObservableProperty]
+    private bool _isCustomMode;
+
+    public static IReadOnlyList<DimensionOption> MaxDimensionOptions { get; } =
+    [
+        new(0, "Original (Unconstrained)"),
+        new(1280, "1280 px (HD)"),
+        new(1920, "1920 px (Full HD)"),
+        new(2560, "2560 px (2K / QHD)"),
+        new(3840, "3840 px (4K UHD)")
+    ];
+
+    public static IReadOnlyList<DpiOption> TargetDpiOptions { get; } =
+    [
+        new(72, "72 DPI (Web / Screen)"),
+        new(96, "96 DPI (Standard Windows)"),
+        new(150, "150 DPI (Balanced Document)"),
+        new(300, "300 DPI (High-Res Archival / Print)")
+    ];
+
+    public static IReadOnlyList<MetadataOption> MetadataOptions { get; } =
+    [
+        new(MetadataHandling.Strip, "Strip (Privacy Mode)"),
+        new(MetadataHandling.Preserve, "Preserve Supported Properties")
+    ];
+
+    public IReadOnlyList<DimensionOption> AvailableDimensionOptions => MaxDimensionOptions;
+    public IReadOnlyList<DpiOption> AvailableDpiOptions => TargetDpiOptions;
+    public IReadOnlyList<MetadataOption> AvailableMetadataOptions => MetadataOptions;
+
+    [ObservableProperty]
+    private DimensionOption _selectedDimensionOption = MaxDimensionOptions[0];
+
+    [ObservableProperty]
+    private DpiOption _selectedDpiOption = TargetDpiOptions[2]; // 150 DPI
+
+    [ObservableProperty]
+    private MetadataOption _selectedMetadataOption = MetadataOptions[0]; // Strip
+
+    public ConversionProfile EffectiveProfile { get; private set; } = OptimizationPresetCatalog.Default.ToProfile();
+
+    public string EffectiveQualityText => $"{EffectiveProfile?.Quality ?? 85}%";
+    public string EffectiveMaxDimensionText => (EffectiveProfile?.MaxDimension ?? 0) == 0 ? "Original" : $"{EffectiveProfile?.MaxDimension} px";
+    public string EffectiveTargetDpiText => $"{EffectiveProfile?.TargetDpi ?? 150} DPI";
+    public string EffectiveMetadataText => (EffectiveProfile?.MetadataPolicy ?? MetadataHandling.Strip) == MetadataHandling.Strip ? "Strip (Privacy)" : "Preserve supported";
+    public string PresetDescriptionText => SelectedPreset?.Description ?? string.Empty;
+    public string CustomQualityText => $"{CustomQuality}%";
+
+    // ── Phase W2-F5: Format-Aware Optimization Capabilities ─────────────
+    public FormatOptimizationCapabilities CurrentFormatCapabilities =>
+        FormatCapabilityCatalog.GetCapabilities(SelectedTargetFormat);
+
+    public bool IsQualityApplicable => CurrentFormatCapabilities.SupportsQuality;
+
+    public bool IsQualityControlEnabled => IsCustomMode && CurrentFormatCapabilities.SupportsQuality;
+
+    public bool IsDimensionControlEnabled => IsCustomMode && CurrentFormatCapabilities.SupportsMaxDimension;
+
+    public bool IsDpiControlEnabled => IsCustomMode && CurrentFormatCapabilities.SupportsTargetDpi;
+
+    public bool IsMetadataControlEnabled => IsCustomMode && CurrentFormatCapabilities.SupportsMetadataPolicy;
+
+    public string QualityApplicabilityText => CurrentFormatCapabilities.QualityExplanation;
+
+    public string DimensionExplanationText => CurrentFormatCapabilities.DimensionExplanation;
+
+    public string DpiExplanationText => CurrentFormatCapabilities.DpiExplanation;
+
+    public string MetadataExplanationText => CurrentFormatCapabilities.MetadataExplanation;
+
+    public string FormatSummaryNote => CurrentFormatCapabilities.SummaryNote;
+
+    public string PresetLockStatusText => IsCustomMode
+        ? "Custom parameters unlocked for editing."
+        : "Preset parameters locked to ensure canonical profile.";
+
+    public string EffectiveQualityDisplay =>
+        CurrentFormatCapabilities.SupportsQuality
+            ? $"{EffectiveProfile?.Quality ?? 85}%"
+            : "N/A (Lossless)";
+
     [ObservableProperty]
     private bool _isDragOver;
 
@@ -135,6 +263,7 @@ public sealed partial class UniversalConverterViewModel : ObservableObject, IDis
         _orchestrator.ProgressChanged += OnOrchestratorProgressChanged;
         _orchestrator.JobStateChanged += OnOrchestratorJobStateChanged;
 
+        UpdateEffectiveProfile();
         DiscoverSupportedFormats();
     }
 
@@ -359,6 +488,15 @@ public sealed partial class UniversalConverterViewModel : ObservableObject, IDis
 
         Queue.Clear();
         _orchestrator.ClearQueue();
+        QueueOutputVsInputText = "0 B";
+        QueueSavingsFormatted = "—";
+        QueueThroughputFormatted = "—";
+        QueueEtaFormatted = "—";
+        HasQueueTelemetry = false;
+        PendingJobsCount = 0;
+        RunningJobsCount = 0;
+        CompletedJobsCount = 0;
+        FailedJobsCount = 0;
         UpdateAvailableTargetFormats();
         UpdateTelemetry();
         ProgressStatusText = "Queue cleared.";
@@ -409,17 +547,6 @@ public sealed partial class UniversalConverterViewModel : ObservableObject, IDis
         IsPaused = false;
         ProgressStatusText = $"Starting conversion of {pendingJobs.Count} file(s)…";
 
-        var collisionPolicy = SelectedCollisionPolicyIndex switch
-        {
-            1 => CollisionPolicy.Overwrite,
-            2 => CollisionPolicy.Skip,
-            _ => CollisionPolicy.AutoRename
-        };
-
-        var metadataPolicy = StripMetadata
-            ? MetadataHandling.Strip
-            : MetadataHandling.Preserve;
-
         string? targetDir = UseSourceDirectory ? null : EffectiveOutputDirectory;
         if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
         {
@@ -436,6 +563,9 @@ public sealed partial class UniversalConverterViewModel : ObservableObject, IDis
         }
 
         // Apply profile & configuration to each pending job
+        UpdateEffectiveProfile();
+        var profileToApply = EffectiveProfile;
+
         foreach (var item in pendingJobs)
         {
             var job = item.Job;
@@ -459,13 +589,7 @@ public sealed partial class UniversalConverterViewModel : ObservableObject, IDis
                 job.DestinationDirectory = Path.GetDirectoryName(job.SourceFilePath) ?? Environment.CurrentDirectory;
             }
 
-            job.Profile = new ConversionProfile
-            {
-                CollisionMode = collisionPolicy,
-                MetadataPolicy = metadataPolicy,
-                TargetDpi = TargetDpi,
-                Quality = JpegQuality
-            };
+            job.Profile = profileToApply;
 
             // Reset state if retrying
             if (job.State == ConversionJobState.Failed)
@@ -657,6 +781,26 @@ public sealed partial class UniversalConverterViewModel : ObservableObject, IDis
                 ProgressStatusText = $"{report.FinishedJobs} of {report.TotalJobs} completed · {report.RunningJobs} converting";
             }
 
+            PendingJobsCount = report.PendingJobs;
+            RunningJobsCount = report.RunningJobs;
+            CompletedJobsCount = report.CompletedJobs;
+            FailedJobsCount = report.FailedJobs;
+
+            if (report.CompletedJobs > 0)
+            {
+                QueueOutputVsInputText = $"{FormatBytes(report.TotalOutputBytes)} (from {FormatBytes(report.TotalInputBytes)})";
+                QueueSavingsFormatted = ConversionTelemetry.FormatAggregateSavings(report.TotalInputBytes, report.TotalOutputBytes, report.CompletedJobs);
+            }
+            else
+            {
+                QueueOutputVsInputText = $"{FormatBytes(report.TotalBytesProcessed)} processed";
+                QueueSavingsFormatted = "—";
+            }
+
+            QueueThroughputFormatted = ConversionTelemetry.FormatThroughput(report.ThroughputBytesPerSecond);
+            QueueEtaFormatted = report.IsCompleted ? "Complete" : ConversionTelemetry.FormatEta(report.EstimatedRemaining);
+            HasQueueTelemetry = Queue.Count > 0 && (report.CompletedJobs > 0 || IsProcessing);
+
             UpdateTelemetry();
         });
     }
@@ -674,10 +818,16 @@ public sealed partial class UniversalConverterViewModel : ObservableObject, IDis
     private void UpdateTelemetry()
     {
         HasItems = Queue.Count > 0;
+        int completedCount = Queue.Count(j => j.Job.State == ConversionJobState.Succeeded);
+        CompletedJobsCount = completedCount;
+        FailedJobsCount = Queue.Count(j => j.Job.State == ConversionJobState.Failed);
+        RunningJobsCount = Queue.Count(j => j.Job.State == ConversionJobState.Running || j.Job.State == ConversionJobState.Cancelling);
+        PendingJobsCount = Queue.Count(j => j.Job.State == ConversionJobState.Pending || j.Job.State == ConversionJobState.Queued || j.Job.State == ConversionJobState.Validating);
         HasCompletedItems = Queue.Any(j => j.Job.State == ConversionJobState.Succeeded ||
                                            j.Job.State == ConversionJobState.Cancelled ||
                                            j.Job.State == ConversionJobState.Skipped);
         HasFailedItems = Queue.Any(j => j.Job.State == ConversionJobState.Failed);
+        HasQueueTelemetry = Queue.Count > 0 && (completedCount > 0 || IsProcessing);
         OnPropertyChanged(nameof(CanStart));
         StartConversionCommand.NotifyCanExecuteChanged();
         Log($"UpdateTelemetry: HasItems={HasItems}, HasCompletedItems={HasCompletedItems}, HasFailedItems={HasFailedItems}, CanStart={CanStart}, QueueCount={Queue.Count}");
@@ -705,6 +855,233 @@ public sealed partial class UniversalConverterViewModel : ObservableObject, IDis
         }
     }
 
+    // ── Phase W2-F3: Preset Selection & Custom Parameter Synchronization ────
+
+    public void SelectPreset(OptimizationPresetId id)
+    {
+        var match = OptimizationPresetCatalog.GetPreset(id);
+        SelectedPreset = match;
+    }
+
+    partial void OnSelectedTargetFormatChanged(string value)
+    {
+        OnPropertyChanged(nameof(CurrentFormatCapabilities));
+        OnPropertyChanged(nameof(IsQualityApplicable));
+        OnPropertyChanged(nameof(IsQualityControlEnabled));
+        OnPropertyChanged(nameof(IsDimensionControlEnabled));
+        OnPropertyChanged(nameof(IsDpiControlEnabled));
+        OnPropertyChanged(nameof(IsMetadataControlEnabled));
+        OnPropertyChanged(nameof(QualityApplicabilityText));
+        OnPropertyChanged(nameof(DimensionExplanationText));
+        OnPropertyChanged(nameof(DpiExplanationText));
+        OnPropertyChanged(nameof(MetadataExplanationText));
+        OnPropertyChanged(nameof(FormatSummaryNote));
+        OnPropertyChanged(nameof(EffectiveQualityDisplay));
+    }
+
+    partial void OnSelectedPresetChanged(OptimizationPreset value)
+    {
+        if (value == null) return;
+
+        if (value.Id == OptimizationPresetId.Custom)
+        {
+            IsCustomMode = true;
+        }
+        else
+        {
+            IsCustomMode = false;
+            // Reflect canonical values into custom editor properties without triggering custom mode
+            _customQuality = value.Quality;
+            _customMaxDimension = value.MaxDimension;
+            _customTargetDpi = value.TargetDpi;
+            _customMetadataPolicy = value.MetadataPolicy;
+
+            OnPropertyChanged(nameof(CustomQuality));
+            OnPropertyChanged(nameof(CustomQualityText));
+            OnPropertyChanged(nameof(CustomMaxDimension));
+            OnPropertyChanged(nameof(CustomTargetDpi));
+            OnPropertyChanged(nameof(CustomMetadataPolicy));
+
+            SyncOptionSelections();
+        }
+
+        OnPropertyChanged(nameof(PresetLockStatusText));
+        OnPropertyChanged(nameof(IsQualityControlEnabled));
+        OnPropertyChanged(nameof(IsDimensionControlEnabled));
+        OnPropertyChanged(nameof(IsDpiControlEnabled));
+        OnPropertyChanged(nameof(IsMetadataControlEnabled));
+
+        UpdateEffectiveProfile();
+    }
+
+    partial void OnCustomQualityChanged(int value)
+    {
+        if (SelectedPreset?.Id != OptimizationPresetId.Custom)
+        {
+            SelectedPreset = OptimizationPresetCatalog.Custom;
+        }
+        else
+        {
+            UpdateEffectiveProfile();
+        }
+    }
+
+    partial void OnCustomMaxDimensionChanged(int value)
+    {
+        if (SelectedPreset?.Id != OptimizationPresetId.Custom)
+        {
+            SelectedPreset = OptimizationPresetCatalog.Custom;
+        }
+        else
+        {
+            SyncOptionSelections();
+            UpdateEffectiveProfile();
+        }
+    }
+
+    partial void OnCustomTargetDpiChanged(int value)
+    {
+        if (SelectedPreset?.Id != OptimizationPresetId.Custom)
+        {
+            SelectedPreset = OptimizationPresetCatalog.Custom;
+        }
+        else
+        {
+            SyncOptionSelections();
+            UpdateEffectiveProfile();
+        }
+    }
+
+    partial void OnCustomMetadataPolicyChanged(MetadataHandling value)
+    {
+        if (SelectedPreset?.Id != OptimizationPresetId.Custom)
+        {
+            SelectedPreset = OptimizationPresetCatalog.Custom;
+        }
+        else
+        {
+            SyncOptionSelections();
+            UpdateEffectiveProfile();
+        }
+    }
+
+    partial void OnSelectedDimensionOptionChanged(DimensionOption value)
+    {
+        if (value != null && IsCustomMode && CustomMaxDimension != value.MaxDimension)
+        {
+            CustomMaxDimension = value.MaxDimension;
+        }
+    }
+
+    partial void OnSelectedDpiOptionChanged(DpiOption value)
+    {
+        if (value != null && IsCustomMode && CustomTargetDpi != value.Dpi)
+        {
+            CustomTargetDpi = value.Dpi;
+        }
+    }
+
+    partial void OnSelectedMetadataOptionChanged(MetadataOption value)
+    {
+        if (value != null && IsCustomMode && CustomMetadataPolicy != value.Policy)
+        {
+            CustomMetadataPolicy = value.Policy;
+        }
+    }
+
+    partial void OnSelectedCollisionPolicyIndexChanged(int value)
+    {
+        UpdateEffectiveProfile();
+    }
+
+    partial void OnStripMetadataChanged(bool value)
+    {
+        if (SelectedPreset?.Id != OptimizationPresetId.Custom)
+        {
+            SelectedPreset = OptimizationPresetCatalog.Custom;
+        }
+        CustomMetadataPolicy = value ? MetadataHandling.Strip : MetadataHandling.Preserve;
+    }
+
+    partial void OnJpegQualityChanged(int value)
+    {
+        if (SelectedPreset?.Id != OptimizationPresetId.Custom)
+        {
+            SelectedPreset = OptimizationPresetCatalog.Custom;
+        }
+        CustomQuality = value;
+    }
+
+    partial void OnTargetDpiChanged(int value)
+    {
+        if (SelectedPreset?.Id != OptimizationPresetId.Custom)
+        {
+            SelectedPreset = OptimizationPresetCatalog.Custom;
+        }
+        CustomTargetDpi = value;
+    }
+
+    private void SyncOptionSelections()
+    {
+#pragma warning disable MVVMTK0034
+        _selectedDimensionOption = MaxDimensionOptions.FirstOrDefault(o => o.MaxDimension == CustomMaxDimension)
+                                   ?? MaxDimensionOptions[0];
+        _selectedDpiOption = TargetDpiOptions.FirstOrDefault(o => o.Dpi == CustomTargetDpi)
+                             ?? TargetDpiOptions[2];
+        _selectedMetadataOption = MetadataOptions.FirstOrDefault(o => o.Policy == CustomMetadataPolicy)
+                                  ?? MetadataOptions[0];
+#pragma warning restore MVVMTK0034
+
+        OnPropertyChanged(nameof(SelectedDimensionOption));
+        OnPropertyChanged(nameof(SelectedDpiOption));
+        OnPropertyChanged(nameof(SelectedMetadataOption));
+    }
+
+    private void UpdateEffectiveProfile()
+    {
+        var collisionPolicy = SelectedCollisionPolicyIndex switch
+        {
+            1 => CollisionPolicy.Overwrite,
+            2 => CollisionPolicy.Skip,
+            _ => CollisionPolicy.AutoRename
+        };
+
+        if (SelectedPreset?.Id == OptimizationPresetId.Custom)
+        {
+            EffectiveProfile = new ConversionProfile
+            {
+                Name = "Custom",
+                Quality = OptimizationValidation.NormalizeQuality(CustomQuality),
+                MaxDimension = OptimizationValidation.NormalizeMaxDimension(CustomMaxDimension),
+                TargetDpi = OptimizationValidation.NormalizeTargetDpi(CustomTargetDpi),
+                MetadataPolicy = OptimizationValidation.NormalizeMetadataPolicy(CustomMetadataPolicy),
+                CollisionMode = collisionPolicy
+            };
+        }
+        else
+        {
+            var preset = SelectedPreset ?? OptimizationPresetCatalog.Default;
+            EffectiveProfile = preset.ToProfile(collisionPolicy);
+        }
+
+#pragma warning disable MVVMTK0034
+        _jpegQuality = EffectiveProfile.Quality;
+        _targetDpi = EffectiveProfile.TargetDpi;
+        _stripMetadata = EffectiveProfile.MetadataPolicy == MetadataHandling.Strip;
+#pragma warning restore MVVMTK0034
+
+        OnPropertyChanged(nameof(EffectiveProfile));
+        OnPropertyChanged(nameof(EffectiveQualityText));
+        OnPropertyChanged(nameof(EffectiveQualityDisplay));
+        OnPropertyChanged(nameof(EffectiveMaxDimensionText));
+        OnPropertyChanged(nameof(EffectiveTargetDpiText));
+        OnPropertyChanged(nameof(EffectiveMetadataText));
+        OnPropertyChanged(nameof(PresetDescriptionText));
+        OnPropertyChanged(nameof(JpegQuality));
+        OnPropertyChanged(nameof(TargetDpi));
+        OnPropertyChanged(nameof(StripMetadata));
+    }
+
     public void Dispose()
     {
         _orchestrator.ProgressChanged -= OnOrchestratorProgressChanged;
@@ -716,4 +1093,19 @@ public sealed partial class UniversalConverterViewModel : ObservableObject, IDis
         }
         Queue.Clear();
     }
+}
+
+public sealed record DimensionOption(int MaxDimension, string DisplayName)
+{
+    public override string ToString() => DisplayName;
+}
+
+public sealed record DpiOption(int Dpi, string DisplayName)
+{
+    public override string ToString() => DisplayName;
+}
+
+public sealed record MetadataOption(MetadataHandling Policy, string DisplayName)
+{
+    public override string ToString() => DisplayName;
 }

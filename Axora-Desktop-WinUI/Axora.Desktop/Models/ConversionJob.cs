@@ -226,6 +226,13 @@ public sealed partial class ConversionJob : ObservableObject, IDisposable
     public string FormattedSourceSize => FormatBytes(SourceFileSizeBytes);
     public string FormattedOutputSize => FormatBytes(OutputSizeBytes);
 
+    public long? SizeDeltaBytes => ConversionTelemetry.CalculateSizeDelta(SourceFileSizeBytes, OutputSizeBytes > 0 || State == ConversionJobState.Succeeded ? OutputSizeBytes : null);
+    public double? SavingsPercentage => ConversionTelemetry.CalculateSavingsPercentage(SourceFileSizeBytes, OutputSizeBytes > 0 || State == ConversionJobState.Succeeded ? OutputSizeBytes : null);
+    public double? ThroughputBytesPerSecond => ConversionTelemetry.CalculateThroughput(SourceFileSizeBytes, ElapsedTime);
+    public string FormattedElapsedTime => ConversionTelemetry.FormatDuration(ElapsedTime);
+    public string FormattedThroughput => ConversionTelemetry.FormatThroughput(ThroughputBytesPerSecond);
+    public string FormattedSavings => ConversionTelemetry.FormatSavings(SourceFileSizeBytes, OutputSizeBytes > 0 || State == ConversionJobState.Succeeded ? OutputSizeBytes : null, State);
+
     public string FormattedStatus => Status switch
     {
         ConversionJobStatus.Queued => "Queued",

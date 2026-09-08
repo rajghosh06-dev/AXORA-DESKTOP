@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -33,7 +33,10 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     private readonly ISpeechSynthesisService _speechService;
     private readonly IScannerService _scannerService;
     private readonly IAppSettingsService _settings;
-    private readonly DispatcherQueue _dispatcher;
+    private readonly IScholarLibraryService? _scholarLibrary;
+    private readonly DispatcherQueue? _dispatcher;
+    private DateTime _currentSessionCreatedAt = DateTime.UtcNow;
+    private bool _isSuppressingChangeTracking;
 
     public ObservableCollection<ScholarChatMessage> ChatMessages { get; } = [];
     public ObservableCollection<string> CitedPassages { get; } = [];
@@ -48,7 +51,8 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         IDocumentChatService documentChat,
         ISpeechSynthesisService speechService,
         IScannerService scannerService,
-        IAppSettingsService settings)
+        IAppSettingsService settings,
+        IScholarLibraryService? scholarLibrary = null)
     {
         _ocrService = ocrService;
         _pdfService = pdfService;
@@ -58,13 +62,20 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         _speechService = speechService;
         _scannerService = scannerService;
         _settings = settings;
+        _scholarLibrary = scholarLibrary;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
         // Partial properties cannot have initializers (CS8050) — set defaults in constructor
+        CurrentSessionId = Guid.NewGuid().ToString("N");
+        CurrentDocumentId = string.Empty;
+        SessionTitle = "Untitled Study Session";
+        PersistenceStatus = "New session (unsaved)";
+        HasUnsavedChanges = false;
         OcrResultText = string.Empty;
         MarkdownText = string.Empty;
         StructuredJsonText = string.Empty;
         ImportedFileName = string.Empty;
+        ImportedFilePath = string.Empty;
         DocumentInfo = string.Empty;
         DocumentFormatBadge = string.Empty;
         WordCountText = "0 words";
@@ -105,6 +116,9 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _importedFileName;
+
+    [ObservableProperty]
+    private string _importedFilePath;
 
     [ObservableProperty]
     private string _documentInfo;
@@ -183,6 +197,39 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isChatQuerying;
 
+    // ── Local Persistence & Session State (Phase W3-B) ────────────────────────
+
+    [ObservableProperty]
+    private string _currentSessionId;
+
+    [ObservableProperty]
+    private string _currentDocumentId;
+
+    [ObservableProperty]
+    private string _sessionTitle;
+
+    [ObservableProperty]
+    private string _persistenceStatus;
+
+    [ObservableProperty]
+    private bool _hasUnsavedChanges;
+
+    public ObservableCollection<StudySession> SavedSessions { get; } = [];
+
+    partial void OnOcrResultTextChanged(string value)
+    {
+        if (_isSuppressingChangeTracking) return;
+        HasUnsavedChanges = true;
+        PersistenceStatus = "Unsaved changes";
+    }
+
+    partial void OnSessionTitleChanged(string value)
+    {
+        if (_isSuppressingChangeTracking) return;
+        HasUnsavedChanges = true;
+        PersistenceStatus = "Unsaved changes";
+    }
+
     // ── Ingestion Handlers ─────────────────────────────────────────────────────
 
     /// <summary>Extracts text from an image stream using the native WinRT OCR engine.</summary>
@@ -208,6 +255,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
             HasLoadedDocument = !string.IsNullOrWhiteSpace(OcrResultText);
             StatusMessage = $"Extraction complete — {OcrResultText.Length:N0} characters found.";
             _ = _documentChat.IndexDocumentAsync(OcrResultText, ct);
+            await RecordIngestedDocumentAsync(ImportedFileName, ImportedFilePath, DocumentFormatType.ImageOcr, OcrResultText);
         }
         catch (OperationCanceledException)
         {
@@ -246,6 +294,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
             HasLoadedDocument = !string.IsNullOrWhiteSpace(OcrResultText);
             StatusMessage = $"PDF extraction complete — {OcrResultText.Length:N0} characters found.";
             _ = _documentChat.IndexDocumentAsync(OcrResultText, ct);
+            await RecordIngestedDocumentAsync(ImportedFileName, ImportedFilePath, DocumentFormatType.Pdf, OcrResultText);
         }
         catch (OperationCanceledException)
         {
@@ -323,6 +372,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
                     HasLoadedDocument = true;
                     StatusMessage = $"Loaded {text.Length:N0} characters from clipboard.";
                     _ = _documentChat.IndexDocumentAsync(OcrResultText);
+                    await RecordIngestedDocumentAsync(ImportedFileName, null, DocumentFormatType.PastedText, OcrResultText);
                 }
             }
             else
@@ -342,7 +392,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
 
     /// <summary>Loads a sample academic paper to test OCR, RAG, and Study Synthesis immediately.</summary>
     [RelayCommand]
-    public void LoadSampleAcademicPaper()
+    public async Task LoadSampleAcademicPaperAsync()
     {
         ImportedFileName = "quantum_neural_computing_2026.pdf";
         DocumentFormatBadge = "SAMPLE PAPER";
@@ -365,7 +415,11 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         HasLoadedDocument = true;
         StatusMessage = "Sample academic paper loaded successfully.";
         _ = _documentChat.IndexDocumentAsync(OcrResultText);
+        await RecordIngestedDocumentAsync(ImportedFileName, null, DocumentFormatType.Sample, OcrResultText);
     }
+
+    /// <summary>Synchronous convenience wrapper for LoadSampleAcademicPaperAsync.</summary>
+    public void LoadSampleAcademicPaper() => _ = LoadSampleAcademicPaperAsync();
 
     // ── Live Speech Lab (Voice Dictation & Read-Aloud) ─────────────────────────
 
@@ -902,6 +956,211 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    public async Task SaveCurrentSessionAsync()
+    {
+        if (_scholarLibrary == null)
+        {
+            PersistenceStatus = "Persistence service unavailable";
+            return;
+        }
+
+        try
+        {
+            var title = !string.IsNullOrWhiteSpace(SessionTitle) && SessionTitle != "Untitled Study Session"
+                ? SessionTitle
+                : (!string.IsNullOrWhiteSpace(ImportedFileName)
+                    ? $"{Path.GetFileNameWithoutExtension(ImportedFileName)} Study Session"
+                    : "Untitled Study Session");
+
+            var session = new StudySession
+            {
+                SessionId = string.IsNullOrWhiteSpace(CurrentSessionId) ? Guid.NewGuid().ToString("N") : CurrentSessionId,
+                Title = title,
+                CreatedAt = DateTime.UtcNow,
+                LastAccessedAt = DateTime.UtcNow,
+                DocumentIds = string.IsNullOrWhiteSpace(CurrentDocumentId) ? [] : [CurrentDocumentId],
+                RawEditorText = OcrResultText,
+                ExecutiveSummary = ExecutiveSummary,
+                Concepts = ExtractedConcepts.Select(c => StudyConcept.FromItem(c)).ToList(),
+                QuizQuestions = PracticeQuizQuestions.Select(q => PracticeQuizItem.FromItem(q)).ToList(),
+                ChatHistory = ChatMessages.ToList()
+            };
+
+            await _scholarLibrary.SaveSessionAsync(session);
+            CurrentSessionId = session.SessionId;
+            SessionTitle = session.Title;
+            HasUnsavedChanges = false;
+            PersistenceStatus = $"Saved at {DateTime.Now:HH:mm:ss}";
+            LastOperationStatus = $"Session '{session.Title}' saved to local library.";
+        }
+        catch (Exception ex)
+        {
+            PersistenceStatus = $"Save failed: {ex.Message}";
+            LastOperationStatus = $"Save error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task LoadSessionAsync(string? sessionId)
+    {
+        if (_scholarLibrary == null || string.IsNullOrWhiteSpace(sessionId)) return;
+
+        try
+        {
+            var session = await _scholarLibrary.GetSessionAsync(sessionId);
+            if (session == null)
+            {
+                PersistenceStatus = "Session not found or corrupt";
+                return;
+            }
+
+            CurrentSessionId = session.SessionId;
+            SessionTitle = session.Title;
+            OcrResultText = session.RawEditorText;
+            ExecutiveSummary = session.ExecutiveSummary;
+            HasGeneratedSummary = !string.IsNullOrWhiteSpace(ExecutiveSummary);
+
+            UpdateDocumentMetrics(OcrResultText);
+            GenerateOutputFormats(OcrResultText);
+            HasLoadedDocument = !string.IsNullOrWhiteSpace(OcrResultText);
+
+            ExtractedConcepts.Clear();
+            foreach (var c in session.Concepts)
+            {
+                ExtractedConcepts.Add(c.ToItem());
+            }
+
+            PracticeQuizQuestions.Clear();
+            foreach (var q in session.QuizQuestions)
+            {
+                PracticeQuizQuestions.Add(q.ToItem());
+            }
+
+            ChatMessages.Clear();
+            foreach (var msg in session.ChatHistory)
+            {
+                ChatMessages.Add(msg);
+            }
+
+            if (session.DocumentIds.Count > 0)
+            {
+                CurrentDocumentId = session.DocumentIds[0];
+                var doc = await _scholarLibrary.GetDocumentAsync(CurrentDocumentId);
+                if (doc != null)
+                {
+                    ImportedFileName = doc.FileName;
+                    DocumentFormatBadge = doc.Format.ToString().ToUpperInvariant();
+                }
+            }
+
+            HasUnsavedChanges = false;
+            PersistenceStatus = $"Loaded at {DateTime.Now:HH:mm:ss}";
+            LastOperationStatus = $"Session '{session.Title}' loaded successfully.";
+        }
+        catch (Exception ex)
+        {
+            PersistenceStatus = $"Load failed: {ex.Message}";
+            LastOperationStatus = $"Load error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task LoadMostRecentSessionAsync()
+    {
+        if (_scholarLibrary == null) return;
+        try
+        {
+            var sessions = await _scholarLibrary.GetAllSessionsAsync();
+            if (sessions.Count > 0)
+            {
+                await LoadSessionAsync(sessions[0].SessionId);
+            }
+            else
+            {
+                LastOperationStatus = "No saved study sessions found.";
+                PersistenceStatus = "No saved sessions";
+            }
+        }
+        catch (Exception ex)
+        {
+            LastOperationStatus = $"Error loading recent session: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task RefreshSavedSessionsListAsync()
+    {
+        if (_scholarLibrary == null) return;
+        try
+        {
+            var sessions = await _scholarLibrary.GetAllSessionsAsync();
+            SavedSessions.Clear();
+            foreach (var s in sessions)
+            {
+                SavedSessions.Add(s);
+            }
+        }
+        catch (Exception ex)
+        {
+            LastOperationStatus = $"Error listing sessions: {ex.Message}";
+        }
+    }
+
+    public async Task RecordIngestedDocumentAsync(string fileName, string? sourcePath, DocumentFormatType format, string rawText)
+    {
+        HasUnsavedChanges = true;
+        PersistenceStatus = "Document recorded (session unsaved)";
+        if (_scholarLibrary == null) return;
+
+        try
+        {
+            var docId = Guid.NewGuid().ToString("N");
+            var doc = new ScholarDocument
+            {
+                DocumentId = docId,
+                FileName = fileName,
+                SourcePath = sourcePath ?? string.Empty,
+                Format = format,
+                FileSizeBytes = rawText.Length,
+                PageCount = 1,
+                Title = Path.GetFileNameWithoutExtension(fileName),
+                Pages =
+                [
+                    new DocumentPage
+                    {
+                        PageNumber = 1,
+                        RawText = rawText,
+                        Chunks =
+                        [
+                            new DocumentPassageChunk
+                            {
+                                ChunkId = 0,
+                                DocumentId = docId,
+                                PageNumber = 1,
+                                ChunkIndex = 0,
+                                Text = rawText.Length > 400 ? rawText[..400] : rawText,
+                                StartCharOffset = 0,
+                                EndCharOffset = Math.Min(400, rawText.Length),
+                                EmbeddingStatus = PassageEmbeddingStatus.NoEmbedding
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            await _scholarLibrary.SaveDocumentAsync(doc);
+            CurrentDocumentId = doc.DocumentId;
+        }
+        catch (Exception ex)
+        {
+            // Transient workflow continues uninterrupted even if document record save fails,
+            // but the error is surfaced to status properties so it is observable.
+            PersistenceStatus = $"Document save error: {ex.Message}";
+            LastOperationStatus = $"Document recording warning: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
     private void ClearResults()
     {
         _speechService.Stop();
@@ -924,6 +1183,12 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         PracticeQuizQuestions.Clear();
         CitedPassages.Clear();
         ChatMessages.Clear();
+
+        CurrentSessionId = Guid.NewGuid().ToString("N");
+        CurrentDocumentId = string.Empty;
+        SessionTitle = "Untitled Study Session";
+        PersistenceStatus = "New session (unsaved)";
+        HasUnsavedChanges = false;
 
         ChatMessages.Add(new ScholarChatMessage
         {

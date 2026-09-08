@@ -342,67 +342,104 @@ public sealed class WicImageConversionEngine : IConversionEngine
         bool isSkiaSupported = ext is ".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp";
         if (isSkiaSupported)
         {
-            // 1. Try high-performance in-memory SkiaSharp decoder first (avoids COM apartment marshaling latency)
+            // 1. Try high-performance in-memory SkiaSharp decoder with EXIF orientation normalization
             try
             {
                 srcStream.Seek(0, SeekOrigin.Begin);
-                var skBitmap = SKBitmap.Decode(srcStream);
-                if (skBitmap != null)
+                using var codec = SKCodec.Create(srcStream);
+                if (codec != null)
                 {
-                    using (skBitmap)
+                    var origin = codec.EncodedOrigin;
+                    using var rawBitmap = SKBitmap.Decode(codec);
+                    if (rawBitmap != null)
                     {
-                        uint origW = (uint)skBitmap.Width;
-                        uint origH = (uint)skBitmap.Height;
-                        uint targetW = origW;
-                        uint targetH = origH;
-
-                        if (profile.MaxDimension > 0 && (origW > profile.MaxDimension || origH > profile.MaxDimension))
+                        SKBitmap uprightBitmap;
+                        bool ownsUpright;
+                        if (origin is SKEncodedOrigin.TopLeft or (SKEncodedOrigin)0)
                         {
-                            double scale = Math.Min((double)profile.MaxDimension / origW, (double)profile.MaxDimension / origH);
-                            targetW = Math.Max(1, (uint)Math.Round(origW * scale));
-                            targetH = Math.Max(1, (uint)Math.Round(origH * scale));
+                            uprightBitmap = rawBitmap;
+                            ownsUpright = false;
                         }
-
-                        SKBitmap toProcess = skBitmap;
-                        SKBitmap? resizedBitmap = null;
-                        if (targetW != origW || targetH != origH)
+                        else
                         {
-                            var info = new SKImageInfo((int)targetW, (int)targetH, skBitmap.ColorType, skBitmap.AlphaType);
-                            resizedBitmap = skBitmap.Resize(info, SKFilterQuality.High);
-                            if (resizedBitmap != null)
-                            {
-                                toProcess = resizedBitmap;
-                            }
+                            uprightBitmap = ExifOrientationNormalizer.NormalizeOrientation(rawBitmap, origin);
+                            ownsUpright = true;
                         }
 
                         try
                         {
-                            var bgraInfo = new SKImageInfo((int)targetW, (int)targetH, SKColorType.Bgra8888, SKAlphaType.Premul);
-                            using var bgraBitmap = new SKBitmap(bgraInfo);
-                            using (var canvas = new SKCanvas(bgraBitmap))
+                            uint origW = (uint)uprightBitmap.Width;
+                            uint origH = (uint)uprightBitmap.Height;
+                            uint targetW = origW;
+                            uint targetH = origH;
+
+                            // Apply proportional MaxDimension downscaling to visually upright dimensions
+                            if (profile.MaxDimension > 0 && (origW > profile.MaxDimension || origH > profile.MaxDimension))
                             {
-                                canvas.DrawBitmap(toProcess, 0, 0);
-                                canvas.Flush();
+                                double scale = Math.Min((double)profile.MaxDimension / origW, (double)profile.MaxDimension / origH);
+                                targetW = Math.Max(1, (uint)Math.Round(origW * scale));
+                                targetH = Math.Max(1, (uint)Math.Round(origH * scale));
                             }
 
-                            byte[] pixels = new byte[bgraBitmap.ByteCount];
-                            Marshal.Copy(bgraBitmap.GetPixels(), pixels, 0, pixels.Length);
-
-                            double dpiX = profile.TargetDpi > 0 ? profile.TargetDpi : 96.0;
-                            double dpiY = profile.TargetDpi > 0 ? profile.TargetDpi : 96.0;
-
-                            return new DecodedImage
+                            SKBitmap toProcess = uprightBitmap;
+                            SKBitmap? resizedBitmap = null;
+                            if (targetW != origW || targetH != origH)
                             {
-                                Width = targetW,
-                                Height = targetH,
-                                DpiX = dpiX,
-                                DpiY = dpiY,
-                                Pixels = pixels
-                            };
+                                var info = new SKImageInfo((int)targetW, (int)targetH, uprightBitmap.ColorType, uprightBitmap.AlphaType);
+                                resizedBitmap = uprightBitmap.Resize(info, SKFilterQuality.High);
+                                if (resizedBitmap != null)
+                                {
+                                    toProcess = resizedBitmap;
+                                }
+                                else
+                                {
+                                    resizedBitmap = new SKBitmap(info);
+                                    using (var canvas = new SKCanvas(resizedBitmap))
+                                    {
+                                        using var paint = new SKPaint { FilterQuality = SKFilterQuality.High, IsAntialias = true };
+                                        canvas.DrawBitmap(uprightBitmap, new SKRect(0, 0, targetW, targetH), paint);
+                                        canvas.Flush();
+                                    }
+                                    toProcess = resizedBitmap;
+                                }
+                            }
+
+                            try
+                            {
+                                var bgraInfo = new SKImageInfo((int)targetW, (int)targetH, SKColorType.Bgra8888, SKAlphaType.Premul);
+                                using var bgraBitmap = new SKBitmap(bgraInfo);
+                                using (var canvas = new SKCanvas(bgraBitmap))
+                                {
+                                    canvas.DrawBitmap(toProcess, 0, 0);
+                                    canvas.Flush();
+                                }
+
+                                byte[] pixels = new byte[bgraBitmap.ByteCount];
+                                Marshal.Copy(bgraBitmap.GetPixels(), pixels, 0, pixels.Length);
+
+                                double dpiX = profile.TargetDpi > 0 ? profile.TargetDpi : 96.0;
+                                double dpiY = profile.TargetDpi > 0 ? profile.TargetDpi : 96.0;
+
+                                return new DecodedImage
+                                {
+                                    Width = targetW,
+                                    Height = targetH,
+                                    DpiX = dpiX,
+                                    DpiY = dpiY,
+                                    Pixels = pixels
+                                };
+                            }
+                            finally
+                            {
+                                resizedBitmap?.Dispose();
+                            }
                         }
                         finally
                         {
-                            resizedBitmap?.Dispose();
+                            if (ownsUpright)
+                            {
+                                uprightBitmap.Dispose();
+                            }
                         }
                     }
                 }
@@ -421,8 +458,8 @@ public sealed class WicImageConversionEngine : IConversionEngine
             raStream.Seek(0);
             var decoder = await BitmapDecoder.CreateAsync(raStream).AsTask(token).ConfigureAwait(false);
 
-            uint origW = decoder.PixelWidth;
-            uint origH = decoder.PixelHeight;
+            uint origW = decoder.OrientedPixelWidth != 0 ? decoder.OrientedPixelWidth : decoder.PixelWidth;
+            uint origH = decoder.OrientedPixelHeight != 0 ? decoder.OrientedPixelHeight : decoder.PixelHeight;
             uint targetW = origW;
             uint targetH = origH;
 

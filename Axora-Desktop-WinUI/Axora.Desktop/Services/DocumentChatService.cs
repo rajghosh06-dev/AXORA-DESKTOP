@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Axora.Desktop.Helpers;
+using Axora.Desktop.Models;
 using Axora.Desktop.Services.Contracts;
 
 namespace Axora.Desktop.Services;
@@ -83,6 +84,7 @@ public sealed class DocumentChatService : IDocumentChatService
                     ChunkId = chunkIndex++,
                     Text = chunkText,
                     Embedding = embedding,
+                    EmbeddingStatus = embedding != null ? PassageEmbeddingStatus.EmbeddingAvailable : PassageEmbeddingStatus.NoEmbedding,
                     CharLength = chunkText.Length
                 });
             }
@@ -238,13 +240,5 @@ public sealed class DocumentChatService : IDocumentChatService
         }
 
         return result;
-    }
-
-    private sealed class DocumentPassageChunk
-    {
-        public int ChunkId { get; init; }
-        public string Text { get; init; } = string.Empty;
-        public float[] Embedding { get; init; } = [];
-        public int CharLength { get; init; }
     }
 }
