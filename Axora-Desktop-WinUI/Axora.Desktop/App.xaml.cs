@@ -137,6 +137,14 @@ public sealed partial class App : Application
                 services.AddSingleton<ScholarExtractionOrchestrator>(sp =>
                     (ScholarExtractionOrchestrator)sp.GetRequiredService<IScholarExtractionOrchestrator>());
 
+                // ── Scholar Vector Embedding & Hybrid Indexing Services (Phase W3-D) ──
+                services.AddSingleton<DirectMlEmbeddingEngine>();
+                services.AddSingleton<IEmbeddingEngine>(sp => sp.GetRequiredService<DirectMlEmbeddingEngine>());
+                services.AddSingleton<IEmbeddingCapabilityStateProvider>(sp => sp.GetRequiredService<DirectMlEmbeddingEngine>());
+                services.AddSingleton<ScholarVectorIndexWriter>();
+                services.AddSingleton<ScholarVectorIndexReader>();
+                services.AddSingleton<IScholarIndexService, ScholarIndexService>();
+
                 // ── Extension & Dependency Manager Services (Phase W1.5) ──────────
                 services.AddSingleton<IExtensionCacheService, ExtensionCacheService>();
                 services.AddSingleton<IExtensionRegistry, ExtensionRegistry>();

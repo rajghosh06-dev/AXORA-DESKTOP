@@ -54,6 +54,7 @@
     <Content Include="Assets\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <EmbeddedResource Include="Assets\Models\all-MiniLM-L6-v2\vocab.txt" />
     <AppxManifest Include="Package.appxmanifest" Condition="'$(WindowsPackageType)' != 'None'">
       <SubType>Designer</SubType>
     </AppxManifest>
