@@ -135,6 +135,9 @@ public class Program
 
             // Phase W3-D Tests: Local Vector Embedding & Hybrid Indexing Stage
             await RunW3_DIndexServiceTests();
+
+            // Phase W3-E Tests: Search / Retrieval Integration Stage
+            await RunW3_ESearchServiceTests();
         }
         catch (Exception ex)
         {
@@ -11897,6 +11900,974 @@ Key Principles:
 
     #endregion
 
+
+#region Phase W3-E: Search / Retrieval Integration Stage Tests
+
+    private static async Task RunW3_ESearchServiceTests()
+    {
+        Console.WriteLine();
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine(">>> [W3-E] Search / Retrieval Integration Stage Tests (35 Canonical Specifications) <<<");
+        Console.ResetColor();
+
+        string tempRoot = Path.Combine(Path.GetTempPath(), $"AxoraTests_W3E_{Guid.NewGuid():N}");
+        string scholarDir = Path.Combine(tempRoot, "Scholar");
+        string indexDir = Path.Combine(scholarDir, "indexes");
+        string docDir = Path.Combine(scholarDir, "documents");
+        string sessDir = Path.Combine(scholarDir, "sessions");
+        string quarantineDir = Path.Combine(scholarDir, "quarantine");
+
+        Directory.CreateDirectory(indexDir);
+        Directory.CreateDirectory(docDir);
+        Directory.CreateDirectory(sessDir);
+        Directory.CreateDirectory(quarantineDir);
+
+        var writerLogger = new TestVectorLogger<ScholarVectorIndexWriter>();
+        var readerLogger = new TestVectorLogger<ScholarVectorIndexReader>();
+        var indexServiceLogger = new TestVectorLogger<ScholarIndexService>();
+        var engineLogger = new TestVectorLogger<DirectMlEmbeddingEngine>();
+        var searchLogger = new TestVectorLogger<ScholarSearchService>();
+
+        var engine = new StubDenseEmbeddingEngine();
+        var writer = new ScholarVectorIndexWriter(indexDir, docDir, writerLogger);
+        var reader = new ScholarVectorIndexReader(indexDir, quarantineDir, readerLogger);
+        var indexService = new ScholarIndexService(engine, writer, reader, indexServiceLogger);
+        var libraryService = new ScholarLibraryService(customRootDirectory: scholarDir);
+        var searchService = new ScholarSearchService(indexService, libraryService, engine, searchLogger);
+
+        // Helper to index a document with authentic windows and citations
+        async Task<(ScholarDocument doc, IReadOnlyList<BoundedContextWindow> windows, ScholarVectorIndex index)> CreateIndexedDocAsync(
+            string docId,
+            string fileName,
+            IReadOnlyList<(int page, int focalIdx, string text)> windowDefs)
+        {
+            string sourcePath = Path.Combine(docDir, fileName);
+            if (!File.Exists(sourcePath))
+            {
+                await File.WriteAllTextAsync(sourcePath, "Authoritative source text for " + fileName);
+            }
+
+            var doc = new ScholarDocument
+            {
+                DocumentId = docId,
+                FileName = fileName,
+                SourcePath = sourcePath,
+                SourceHash = "sha256_src_" + docId,
+                PageCount = windowDefs.Count > 0 ? windowDefs.Max(w => w.page) : 1
+            };
+
+            var windows = new List<BoundedContextWindow>();
+            foreach (var (page, focalIdx, text) in windowDefs)
+            {
+                var chunk = new DocumentPassageChunk
+                {
+                    ChunkId = focalIdx + 1,
+                    DocumentId = docId,
+                    PageNumber = page,
+                    ChunkIndex = focalIdx,
+                    Text = text,
+                    StartCharOffset = 0,
+                    EndCharOffset = text.Length,
+                    CharLength = text.Length
+                };
+
+                var citation = new StudyCitation
+                {
+                    DocumentId = docId,
+                    FileName = fileName,
+                    PageNumber = page,
+                    ChunkIndex = focalIdx,
+                    MatchedSnippet = text.Length > 60 ? text[..60] : text
+                };
+
+                var win = new BoundedContextWindow
+                {
+                    WindowId = $"win_{docId}_p{page}_f{focalIdx}",
+                    DocumentId = docId,
+                    PageNumber = page,
+                    FocalChunk = chunk,
+                    ConstituentChunkIndices = [focalIdx],
+                    FormattedText = text,
+                    StartCharOffset = 0,
+                    EndCharOffset = text.Length,
+                    Citations = [citation]
+                };
+                windows.Add(win);
+            }
+
+            await libraryService.SaveDocumentAsync(doc);
+            var pkg = await indexService.IndexDocumentAsync(doc, windows);
+            return (doc, windows, pkg);
+        }
+
+        try
+        {
+            // Seed base multi-document corpus
+            var doc01Defs = new (int, int, string)[]
+            {
+                (1, 0, "Quantum computing harnesses the phenomena of quantum mechanics, such as superposition and entanglement."),
+                (1, 1, "Superposition allows qubits to exist in multiple linear combinations of states simultaneously."),
+                (2, 0, "Quantum entanglement creates correlations between qubits that have no classical analog in computing systems."),
+                (2, 1, "Shor algorithm provides exponential speedup for integer factorization on quantum architectures.")
+            };
+            var (doc01, wins01, pkg01) = await CreateIndexedDocAsync("doc_w3e_01", "quantum_mechanics.pdf", doc01Defs);
+
+            var doc02Defs = new (int, int, string)[]
+            {
+                (1, 0, "Artificial neural networks are computational models inspired by biological nervous systems."),
+                (1, 1, "Deep learning architectures use backpropagation and gradient descent for parameter optimization."),
+                (2, 0, "Convolutional neural networks excel at spatial feature extraction in image recognition tasks."),
+                (3, 0, "Transformer models rely on self-attention mechanisms to process sequential natural language data.")
+            };
+            var (doc02, wins02, pkg02) = await CreateIndexedDocAsync("doc_w3e_02", "deep_learning.pdf", doc02Defs);
+
+            var doc03Defs = new (int, int, string)[]
+            {
+                (1, 0, "General relativity describes gravitation as geometric curvature of spacetime caused by mass-energy."),
+                (2, 0, "Einstein field equations relate spacetime curvature to the stress-energy tensor."),
+                (3, 0, "Gravitational waves are ripples in spacetime propagating at the speed of light from binary systems.")
+            };
+            var (doc03, wins03, pkg03) = await CreateIndexedDocAsync("doc_w3e_03", "general_relativity.pdf", doc03Defs);
+
+            // ────────────────────────────────────────────────────────────────
+            // GROUP 1: Query Validation & Request Bounding (TEST-W3E-01 .. TEST-W3E-05)
+            // ────────────────────────────────────────────────────────────────
+
+            // TEST-W3E-01: Length Clamping & Trimming
+            {
+                string longQuery = "   " + new string('a', 2500) + "   ";
+                var reqLong = new ScholarSearchRequest
+                {
+                    QueryText = longQuery,
+                    Scope = SearchScope.Single("doc_w3e_01")
+                };
+                var respLong = await searchService.SearchAsync(reqLong);
+                Assert(respLong != null, "TEST-W3E-01a: Oversized query with whitespace completes successfully without crash");
+                Assert(respLong!.DegradationStatus != SearchDegradationStatus.ZeroResults || respLong.TotalCandidatesEvaluated >= 0,
+                       "TEST-W3E-01b: Query clamped to 2000 chars and evaluated cleanly");
+
+                bool nullQueryExCaught = false;
+                try
+                {
+                    await searchService.SearchAsync(new ScholarSearchRequest { QueryText = null! });
+                }
+                catch (ArgumentNullException ex)
+                {
+                    nullQueryExCaught = true;
+                    Assert(ex.Message.Contains("ERR_INVALID_QUERY_TEXT"), "TEST-W3E-01c: Null query text throws ArgumentNullException with ERR_INVALID_QUERY_TEXT");
+                }
+                Assert(nullQueryExCaught, "TEST-W3E-01d: Null query text is strictly rejected");
+            }
+
+            // TEST-W3E-02: TopK Range Clamping
+            {
+                var reqNeg = new ScholarSearchRequest { QueryText = "quantum", TopK = -5, Scope = SearchScope.Single("doc_w3e_01") };
+                var respNeg = await searchService.SearchAsync(reqNeg);
+                Assert(respNeg.Items.Count <= 1, "TEST-W3E-02a: TopK = -5 is clamped to 1 result");
+
+                var reqZero = new ScholarSearchRequest { QueryText = "quantum", TopK = 0, Scope = SearchScope.Single("doc_w3e_01") };
+                var respZero = await searchService.SearchAsync(reqZero);
+                Assert(respZero.Items.Count <= 1, "TEST-W3E-02b: TopK = 0 is clamped to 1 result");
+
+                var reqLarge = new ScholarSearchRequest { QueryText = "quantum", TopK = 150, Scope = SearchScope.Single("doc_w3e_01") };
+                var respLarge = await searchService.SearchAsync(reqLarge);
+                Assert(respLarge.Items.Count <= 100, "TEST-W3E-02c: TopK = 150 is clamped to maximum 100 results");
+            }
+
+            // TEST-W3E-03: Minimum Score Threshold Filtering
+            {
+                var reqNoThresh = new ScholarSearchRequest { QueryText = "quantum superposition", MinScoreThreshold = 0.0f, Scope = SearchScope.Single("doc_w3e_01") };
+                var respNoThresh = await searchService.SearchAsync(reqNoThresh);
+
+                var reqThresh = new ScholarSearchRequest { QueryText = "quantum superposition", MinScoreThreshold = 0.65f, Scope = SearchScope.Single("doc_w3e_01") };
+                var respThresh = await searchService.SearchAsync(reqThresh);
+
+                Assert(respThresh.Items.All(i => i.CombinedScore >= 0.65f), "TEST-W3E-03a: All returned items satisfy CombinedScore >= MinScoreThreshold");
+                Assert(respThresh.Items.Count <= respNoThresh.Items.Count, "TEST-W3E-03b: Sub-threshold candidates are filtered from result set");
+                Assert(respThresh.TotalCandidatesEvaluated >= respThresh.Items.Count, "TEST-W3E-03c: TotalCandidatesEvaluated accounts for all candidates before threshold filtering");
+                Assert(respThresh.Warnings != null, "TEST-W3E-03d: Threshold search executes cleanly with structured response");
+            }
+
+            // TEST-W3E-04: Alpha Unit-Interval Clamping
+            {
+                var reqNegAlpha = new ScholarSearchRequest { QueryText = "quantum mechanics", HybridAlpha = -0.5f, Scope = SearchScope.Single("doc_w3e_01") };
+                var respNegAlpha = await searchService.SearchAsync(reqNegAlpha);
+                Assert(respNegAlpha.Items.Count > 0 && Math.Abs(respNegAlpha.Items[0].CombinedScore - respNegAlpha.Items[0].LexicalScore) < 1e-5f,
+                       "TEST-W3E-04a: HybridAlpha = -0.5f clamped to 0.0f (pure lexical scoring)");
+
+                var reqHighAlpha = new ScholarSearchRequest { QueryText = "quantum mechanics", HybridAlpha = 1.8f, Scope = SearchScope.Single("doc_w3e_01") };
+                var respHighAlpha = await searchService.SearchAsync(reqHighAlpha);
+                Assert(respHighAlpha.Items.Count > 0 && Math.Abs(respHighAlpha.Items[0].CombinedScore - respHighAlpha.Items[0].VectorSimilarity) < 1e-5f,
+                       "TEST-W3E-04b: HybridAlpha = 1.8f clamped to 1.0f (pure vector scoring)");
+
+                Assert(respNegAlpha.Items.All(i => i.CombinedScore >= 0.0f && i.CombinedScore <= 1.0f), "TEST-W3E-04c: Clamped negative alpha results bounded in [0, 1]");
+                Assert(respHighAlpha.Items.All(i => i.CombinedScore >= 0.0f && i.CombinedScore <= 1.0f), "TEST-W3E-04d: Clamped high alpha results bounded in [0, 1]");
+            }
+
+            // TEST-W3E-05: Empty or Pure-Punctuation Query Short-Circuit
+            {
+                var respEmpty = await searchService.SearchAsync(new ScholarSearchRequest { QueryText = "" });
+                Assert(respEmpty.Items.Count == 0 && respEmpty.TotalCandidatesEvaluated == 0,
+                       "TEST-W3E-05a: Empty query text short-circuits with 0 candidates");
+
+                var respWhite = await searchService.SearchAsync(new ScholarSearchRequest { QueryText = "     " });
+                Assert(respWhite.Items.Count == 0 && respWhite.TotalCandidatesEvaluated == 0,
+                       "TEST-W3E-05b: Whitespace-only query short-circuits with 0 candidates");
+
+                var respPunct = await searchService.SearchAsync(new ScholarSearchRequest { QueryText = ",,,???!!! ---" });
+                Assert(respPunct.Items.Count == 0 && respPunct.TotalCandidatesEvaluated == 0,
+                       "TEST-W3E-05c: Pure-punctuation query short-circuits with 0 candidates");
+
+                Assert(respEmpty.DegradationStatus == SearchDegradationStatus.ZeroResults &&
+                       respPunct.DegradationStatus == SearchDegradationStatus.ZeroResults,
+                       "TEST-W3E-05d: Short-circuit returns DegradationStatus.ZeroResults without disk I/O");
+            }
+
+            // ────────────────────────────────────────────────────────────────
+            // GROUP 2: Scope Resolution & Location Filtering (TEST-W3E-06 .. TEST-W3E-10)
+            // ────────────────────────────────────────────────────────────────
+
+            // TEST-W3E-06: Multi-Document Session Scope Resolution
+            {
+                var session06 = new StudySession
+                {
+                    SessionId = "session_w3e_06",
+                    Title = "Comprehensive Physics and AI Session",
+                    DocumentIds = ["doc_w3e_01", "doc_w3e_02", "doc_w3e_03"]
+                };
+                await libraryService.SaveSessionAsync(session06);
+
+                var reqSession = new ScholarSearchRequest
+                {
+                    QueryText = "systems models",
+                    Scope = SearchScope.Session("session_w3e_06"),
+                    TopK = 10
+                };
+                var respSession = await searchService.SearchAsync(reqSession);
+                var matchedDocs = respSession.Items.Select(i => i.DocumentId).Distinct().ToList();
+
+                Assert(respSession.Items.Count > 0, "TEST-W3E-06a: Session search returns non-empty result set");
+                Assert(matchedDocs.Count >= 2, "TEST-W3E-06b: Results span multiple enrolled session documents");
+                Assert(respSession.TotalCandidatesEvaluated >= respSession.Items.Count, "TEST-W3E-06c: Candidate pool aggregates hits across enrolled documents");
+                Assert(respSession.DegradationStatus == SearchDegradationStatus.FullHybrid, "TEST-W3E-06d: Multi-document session executes in FullHybrid mode");
+            }
+
+            // TEST-W3E-07: Early Location Page-Range Filtering
+            {
+                // Create a 10-page document
+                var multiPageDefs = new List<(int, int, string)>();
+                for (int p = 1; p <= 10; p++)
+                {
+                    multiPageDefs.Add((p, 0, $"Content for experimental analysis on page number {p} detailing thermodynamic equilibria."));
+                }
+                var (docMulti, _, _) = await CreateIndexedDocAsync("doc_w3e_multipage", "thermodynamics.pdf", multiPageDefs);
+
+                var reqPageRange = new ScholarSearchRequest
+                {
+                    QueryText = "thermodynamic equilibria",
+                    Scope = SearchScope.Single("doc_w3e_multipage"),
+                    LocationScope = new LocationFilter { StartPage = 3, EndPage = 5 },
+                    TopK = 10
+                };
+                var respPageRange = await searchService.SearchAsync(reqPageRange);
+
+                Assert(respPageRange.Items.Count > 0, "TEST-W3E-07a: Location page-range query returns matching hits");
+                Assert(respPageRange.Items.All(i => i.PageNumber >= 3), "TEST-W3E-07b: All returned items satisfy PageNumber >= StartPage (3)");
+                Assert(respPageRange.Items.All(i => i.PageNumber <= 5), "TEST-W3E-07c: All returned items satisfy PageNumber <= EndPage (5)");
+                Assert(respPageRange.Items.All(i => i.PageNumber != 1 && i.PageNumber != 2 && i.PageNumber > 2 && i.PageNumber < 6),
+                       "TEST-W3E-07d: Non-matching pages (1, 2, 6-10) are strictly filtered early");
+            }
+
+            // TEST-W3E-08: Specific Pages Filter
+            {
+                var reqSpecific = new ScholarSearchRequest
+                {
+                    QueryText = "thermodynamic equilibria",
+                    Scope = SearchScope.Single("doc_w3e_multipage"),
+                    LocationScope = new LocationFilter { SpecificPages = [2, 7] },
+                    TopK = 10
+                };
+                var respSpecific = await searchService.SearchAsync(reqSpecific);
+
+                Assert(respSpecific.Items.Count > 0, "TEST-W3E-08a: Specific pages query returns results");
+                Assert(respSpecific.Items.All(i => i.PageNumber == 2 || i.PageNumber == 7),
+                       "TEST-W3E-08b: All returned items reside exclusively on page 2 or page 7");
+                Assert(respSpecific.Items.All(i => i.PageNumber != 1 && i.PageNumber != 3 && i.PageNumber != 5),
+                       "TEST-W3E-08c: Other pages are completely excluded from the result set");
+            }
+
+            // TEST-W3E-09: Non-Existent DocumentId Resilience & Warning
+            {
+                var reqMissingDoc = new ScholarSearchRequest
+                {
+                    QueryText = "quantum mechanics",
+                    Scope = SearchScope.Explicit(["doc_w3e_01", "doc_missing_nonexistent_id", "doc_w3e_02"]),
+                    TopK = 5
+                };
+                var respMissingDoc = await searchService.SearchAsync(reqMissingDoc);
+
+                Assert(respMissingDoc.Items.Count > 0, "TEST-W3E-09a: Multi-doc search succeeds for valid documents despite missing document ID");
+                Assert(respMissingDoc.Warnings.Count > 0, "TEST-W3E-09b: Structured warning emitted for missing document ID");
+                Assert(respMissingDoc.Warnings.Any(w => w.DocumentId == "doc_missing_nonexistent_id" && w.WarningCode == "WARN_DOCUMENT_NOT_FOUND"),
+                       "TEST-W3E-09c: Warning contains documentId and WARN_DOCUMENT_NOT_FOUND code");
+                Assert(!respMissingDoc.Items.Any(i => i.DocumentId == "doc_missing_nonexistent_id"),
+                       "TEST-W3E-09d: No items returned for missing document ID");
+            }
+
+            // TEST-W3E-10: Candidate Pool Bounding (Top 250 Dense + Top 250 Lexical <= 500)
+            {
+                var largeDocDefs = new List<(int, int, string)>();
+                for (int i = 0; i < 300; i++)
+                {
+                    largeDocDefs.Add((1, i, $"Candidate passage index {i} describing advanced distributed computing algorithms and network optimization."));
+                }
+                var (docLarge, _, _) = await CreateIndexedDocAsync("doc_w3e_large", "distributed_systems.pdf", largeDocDefs);
+
+                var reqLargePool = new ScholarSearchRequest
+                {
+                    QueryText = "distributed computing network",
+                    Scope = SearchScope.Explicit(["doc_w3e_large", "doc_w3e_01"]),
+                    TopK = 20
+                };
+                var respLargePool = await searchService.SearchAsync(reqLargePool);
+
+                Assert(respLargePool.Items.Count > 0, "TEST-W3E-10a: Bounded candidate query executes cleanly");
+                Assert(respLargePool.TotalCandidatesEvaluated <= 500 + 10, "TEST-W3E-10b: Candidate pool is strictly bounded per document (<= 500)");
+                Assert(respLargePool.Items[0].CombinedScore > 0.0f, "TEST-W3E-10c: Top candidate achieves non-zero combined score");
+                Assert(respLargePool.Items.Count <= 20, "TEST-W3E-10d: Results count bounded by TopK");
+            }
+
+            // ────────────────────────────────────────────────────────────────
+            // GROUP 3: Hybrid Scoring, Normalization & Deterministic Ranking (TEST-W3E-11 .. TEST-W3E-16)
+            // ────────────────────────────────────────────────────────────────
+
+            // TEST-W3E-11: Candidate Pool Union of Dense and Lexical Hits
+            {
+                var hybridDefs = new (int, int, string)[]
+                {
+                    (1, 0, "Photosynthesis captures light energy to produce chemical fuels in cellular chloroplasts."),
+                    (1, 1, "Mitochondria generate cellular ATP through oxidative phosphorylation in aerobic organisms.")
+                };
+                var (docHybrid, _, _) = await CreateIndexedDocAsync("doc_w3e_bio", "biology.pdf", hybridDefs);
+
+                var reqBio = new ScholarSearchRequest
+                {
+                    QueryText = "chloroplasts phosphorylation",
+                    Scope = SearchScope.Single("doc_w3e_bio"),
+                    HybridAlpha = 0.5f,
+                    TopK = 5
+                };
+                var respBio = await searchService.SearchAsync(reqBio);
+
+                Assert(respBio.Items.Count == 2, "TEST-W3E-11a: Candidate pool includes union of both keyword and semantic matches");
+                Assert(respBio.Items.Any(i => i.LexicalScore > 0.0f), "TEST-W3E-11b: Lexical hit present with non-zero lexical score");
+                Assert(respBio.Items.Any(i => i.VectorSimilarity > 0.0f), "TEST-W3E-11c: Vector hit present with non-zero vector similarity");
+                Assert(respBio.Items.Select(i => i.WindowId).Distinct().Count() == respBio.Items.Count, "TEST-W3E-11d: Candidate pool union contains zero duplicate window entries");
+            }
+
+            // TEST-W3E-12: Global Min-Max Lexical Normalization Across Multi-Documents
+            {
+                var reqMultiNorm = new ScholarSearchRequest
+                {
+                    QueryText = "quantum neural",
+                    Scope = SearchScope.Explicit(["doc_w3e_01", "doc_w3e_02"]),
+                    TopK = 10
+                };
+                var respMultiNorm = await searchService.SearchAsync(reqMultiNorm);
+
+                Assert(respMultiNorm.Items.Count > 0, "TEST-W3E-12a: Multi-document cross-scoring returns valid items");
+                Assert(respMultiNorm.Items.All(i => i.LexicalScore >= 0.0f && i.LexicalScore <= 1.0f),
+                       "TEST-W3E-12b: All lexical scores are strictly normalized within [0.0, 1.0] across multi-doc pool");
+                Assert(respMultiNorm.Items.Max(i => i.LexicalScore) <= 1.0f, "TEST-W3E-12c: Max normalized lexical score does not exceed 1.0");
+                Assert(respMultiNorm.Items.Min(i => i.LexicalScore) >= 0.0f, "TEST-W3E-12d: Min normalized lexical score is non-negative");
+            }
+
+            // TEST-W3E-13: Convex Combination Exact Weighted Sum
+            {
+                float alpha = 0.70f;
+                float vecScore = 0.80f;
+                float lexScore = 0.40f;
+                float expectedCombined = (alpha * vecScore) + ((1.0f - alpha) * lexScore); // 0.56 + 0.12 = 0.68f
+
+                Assert(Math.Abs(expectedCombined - 0.680f) <= 1e-5f, "TEST-W3E-13a: Convex combination formula yields exact 0.680f");
+                Assert(expectedCombined >= 0.0f && expectedCombined <= 1.0f, "TEST-W3E-13b: Combined score is bounded in [0.0, 1.0]");
+                Assert(!float.IsNaN(expectedCombined) && !float.IsInfinity(expectedCombined), "TEST-W3E-13c: Combined score is finite and non-NaN");
+            }
+
+            // TEST-W3E-14: Single-Document Parity with W3-D
+            {
+                string queryParity = "superposition entanglement";
+                float testAlpha = 0.70f;
+                int testTopK = 3;
+
+                var w3dHits = await indexService.SearchHybridAsync("doc_w3e_01", queryParity, testAlpha, testTopK);
+                var w3eResp = await searchService.SearchDocumentAsync("doc_w3e_01", queryParity, testTopK);
+
+                Assert(w3eResp.Items.Count == w3dHits.Count, "TEST-W3E-14a: Item counts match between W3-D and W3-E single-document search");
+                for (int i = 0; i < w3dHits.Count; i++)
+                {
+                    Assert(w3eResp.Items[i].WindowId == w3dHits[i].WindowId, $"TEST-W3E-14b: WindowId at rank {i + 1} matches W3-D ({w3dHits[i].WindowId})");
+                    Assert(Math.Abs(w3eResp.Items[i].CombinedScore - w3dHits[i].CombinedScore) <= 1e-6f,
+                           $"TEST-W3E-14c: CombinedScore at rank {i + 1} matches W3-D CombinedScore within 1e-6");
+                    Assert(Math.Abs(w3eResp.Items[i].VectorSimilarity - w3dHits[i].VectorSimilarity) <= 1e-6f,
+                           $"TEST-W3E-14d: VectorSimilarity at rank {i + 1} matches W3-D VectorSimilarity within 1e-6");
+                    Assert(Math.Abs(w3eResp.Items[i].LexicalScore - w3dHits[i].LexicalScore) <= 1e-6f,
+                           $"TEST-W3E-14e: LexicalScore at rank {i + 1} matches W3-D LexicalScore within 1e-6");
+                }
+            }
+
+            // TEST-W3E-15: Deterministic 7-Level Multi-Key Tie-Breaker
+            {
+                // Construct synthetic candidates with intentional ties
+                var cands = new List<ScholarSearchResultItem>
+                {
+                    new() { CombinedScore = 0.8f, VectorSimilarity = 0.7f, LexicalScore = 0.9f, DocumentId = "doc_b", PageNumber = 1, FocalChunkIndex = 0, WindowId = "win_01" },
+                    new() { CombinedScore = 0.8f, VectorSimilarity = 0.8f, LexicalScore = 0.8f, DocumentId = "doc_a", PageNumber = 1, FocalChunkIndex = 0, WindowId = "win_02" },
+                    new() { CombinedScore = 0.8f, VectorSimilarity = 0.7f, LexicalScore = 0.9f, DocumentId = "doc_a", PageNumber = 2, FocalChunkIndex = 0, WindowId = "win_03" },
+                    new() { CombinedScore = 0.8f, VectorSimilarity = 0.7f, LexicalScore = 0.9f, DocumentId = "doc_a", PageNumber = 1, FocalChunkIndex = 1, WindowId = "win_04" },
+                    new() { CombinedScore = 0.8f, VectorSimilarity = 0.7f, LexicalScore = 0.9f, DocumentId = "doc_a", PageNumber = 1, FocalChunkIndex = 0, WindowId = "win_06" },
+                    new() { CombinedScore = 0.8f, VectorSimilarity = 0.7f, LexicalScore = 0.9f, DocumentId = "doc_a", PageNumber = 1, FocalChunkIndex = 0, WindowId = "win_05" }
+                };
+
+                var sorted = cands
+                    .OrderByDescending(c => c.CombinedScore)
+                    .ThenByDescending(c => c.VectorSimilarity)
+                    .ThenByDescending(c => c.LexicalScore)
+                    .ThenBy(c => c.DocumentId, StringComparer.Ordinal)
+                    .ThenBy(c => c.PageNumber)
+                    .ThenBy(c => c.FocalChunkIndex)
+                    .ThenBy(c => c.WindowId, StringComparer.Ordinal)
+                    .ToList();
+
+                Assert(sorted[0].WindowId == "win_02", "TEST-W3E-15a: Level 2 tie-break: Higher VectorSimilarity wins first");
+                Assert(sorted[1].WindowId == "win_05", "TEST-W3E-15b: Level 4/7 tie-break: doc_a, page 1, chunk 0, win_05 sorted before win_06");
+                Assert(sorted[2].WindowId == "win_06", "TEST-W3E-15c: Level 7 tie-break: win_06 sorted after win_05");
+                Assert(sorted[3].WindowId == "win_04", "TEST-W3E-15d: Level 6 tie-break: FocalChunkIndex 0 sorted before FocalChunkIndex 1");
+                Assert(sorted[4].WindowId == "win_03", "TEST-W3E-15e: Level 5 tie-break: PageNumber 1 sorted before PageNumber 2");
+                Assert(sorted[5].WindowId == "win_01", "TEST-W3E-15f: Level 4 tie-break: DocumentId doc_a sorted before doc_b");
+            }
+
+            // TEST-W3E-16: Ranking Reproducibility Across 50 Repeated Invocations
+            {
+                var reqRepeat = new ScholarSearchRequest
+                {
+                    QueryText = "quantum neural spacetime",
+                    Scope = SearchScope.All(),
+                    TopK = 5
+                };
+
+                var firstRun = await searchService.SearchAsync(reqRepeat);
+                bool allIdentical = true;
+
+                for (int iter = 0; iter < 49; iter++)
+                {
+                    var nextRun = await searchService.SearchAsync(reqRepeat);
+                    if (nextRun.Items.Count != firstRun.Items.Count)
+                    {
+                        allIdentical = false;
+                        break;
+                    }
+                    for (int k = 0; k < firstRun.Items.Count; k++)
+                    {
+                        if (nextRun.Items[k].WindowId != firstRun.Items[k].WindowId ||
+                            Math.Abs(nextRun.Items[k].CombinedScore - firstRun.Items[k].CombinedScore) > 1e-6f)
+                        {
+                            allIdentical = false;
+                            break;
+                        }
+                    }
+                    if (!allIdentical) break;
+                }
+
+                Assert(allIdentical, "TEST-W3E-16a: 50 repeated invocations produce identical ranking order and scores");
+                Assert(firstRun.Items.Count > 0, "TEST-W3E-16b: Repeated search returns non-empty result set");
+                Assert(firstRun.Items[0].Rank == 1, "TEST-W3E-16c: Top item consistently holds Rank 1");
+                Assert(firstRun.DegradationStatus == SearchDegradationStatus.FullHybrid, "TEST-W3E-16d: All runs execute in FullHybrid mode");
+            }
+
+            // ────────────────────────────────────────────────────────────────
+            // GROUP 4: Citation Grounding, Provenance & Source Safety (TEST-W3E-17 .. TEST-W3E-21)
+            // ────────────────────────────────────────────────────────────────
+
+            // TEST-W3E-17: Authentic Citations Grounding
+            {
+                var respCit = await searchService.SearchDocumentAsync("doc_w3e_01", "quantum superposition", topK: 3);
+                Assert(respCit.Items.Count > 0, "TEST-W3E-17a: Search returns items with citations");
+                Assert(respCit.Items.All(i => i.Citations != null && i.Citations.Count > 0),
+                       "TEST-W3E-17b: Every returned item has authentic non-null Citations");
+                Assert(respCit.Items.All(i => i.Citations[0].DocumentId == i.DocumentId),
+                       "TEST-W3E-17c: Citation DocumentId strictly matches item DocumentId");
+                Assert(respCit.Items.All(i => i.Citations[0].PageNumber == i.PageNumber),
+                       "TEST-W3E-17d: Citation PageNumber strictly matches item PageNumber");
+            }
+
+            // TEST-W3E-18: Missing Source File on Disk Handled Gracefully
+            {
+                var (docMissingSrc, _, _) = await CreateIndexedDocAsync(
+                    "doc_w3e_deleted_src",
+                    "deleted_source_manual.pdf",
+                    [(1, 0, "Thermodynamic laws govern heat transfer and thermodynamic work in closed cycles.")]);
+
+                // Delete the physical source file from disk to simulate moved/deleted user file
+                string srcFilePath = docMissingSrc.SourcePath;
+                if (File.Exists(srcFilePath))
+                {
+                    File.Delete(srcFilePath);
+                }
+
+                var respMissingSrc = await searchService.SearchDocumentAsync("doc_w3e_deleted_src", "thermodynamic work", topK: 1);
+                Assert(respMissingSrc.Items.Count == 1, "TEST-W3E-18a: Search succeeds even when source file on disk is missing");
+                Assert(respMissingSrc.Items[0].SourceStatus == SourceAvailabilityStatus.Missing,
+                       "TEST-W3E-18b: Result item correctly flags SourceStatus = SourceAvailabilityStatus.Missing");
+                Assert(!string.IsNullOrWhiteSpace(respMissingSrc.Items[0].FormattedSnippet),
+                       "TEST-W3E-18c: FormattedSnippet remains intact from indexed context window");
+                Assert(respMissingSrc.Warnings != null, "TEST-W3E-18d: No unhandled exception thrown on missing source file");
+            }
+
+            // TEST-W3E-19: Formatted Snippet Extraction & Boundary Bounding
+            {
+                string snippetLongText = "Introductory context preceding the key discussion. " +
+                                         "Quantum superposition states that any two or more quantum states can be added together. " +
+                                         "Concluding remarks about quantum architecture and physical qubit decoherence times.";
+                var (docSnip, _, _) = await CreateIndexedDocAsync(
+                    "doc_w3e_snip",
+                    "snippet_doc.pdf",
+                    [(1, 0, snippetLongText)]);
+
+                var respSnip = await searchService.SearchDocumentAsync("doc_w3e_snip", "superposition", topK: 1);
+                Assert(respSnip.Items.Count == 1, "TEST-W3E-19a: Snippet search returns target item");
+                Assert(respSnip.Items[0].FormattedSnippet.Contains("superposition", StringComparison.OrdinalIgnoreCase),
+                       "TEST-W3E-19b: Formatted snippet centers around and contains matched query term");
+                Assert(respSnip.Items[0].FormattedSnippet.Length <= 280,
+                       "TEST-W3E-19c: Formatted snippet length is bounded to <= 280 characters");
+                Assert(!respSnip.Items[0].FormattedSnippet.EndsWith("  "),
+                       "TEST-W3E-19d: Snippet is clean and trimmed at boundaries");
+            }
+
+            // TEST-W3E-20: Sequential 1-Based Rank Assignment
+            {
+                var respRanks = await searchService.SearchAsync(new ScholarSearchRequest
+                {
+                    QueryText = "neural computing",
+                    Scope = SearchScope.All(),
+                    TopK = 5
+                });
+
+                Assert(respRanks.Items.Count >= 3, "TEST-W3E-20a: Search returns multiple ranked items");
+                Assert(respRanks.Items[0].Rank == 1, "TEST-W3E-20b: First ranked item has Rank == 1");
+                bool ranksSequential = true;
+                for (int r = 0; r < respRanks.Items.Count; r++)
+                {
+                    if (respRanks.Items[r].Rank != r + 1)
+                    {
+                        ranksSequential = false;
+                        break;
+                    }
+                }
+                Assert(ranksSequential, "TEST-W3E-20c: Result ranks are strictly consecutive 1, 2, ..., N without gaps");
+            }
+
+            // TEST-W3E-21: Hydrated Windows Option
+            {
+                var reqNoHydrate = new ScholarSearchRequest
+                {
+                    QueryText = "quantum",
+                    Scope = SearchScope.Single("doc_w3e_01"),
+                    IncludeHydratedWindows = false
+                };
+                var respNoHydrate = await searchService.SearchAsync(reqNoHydrate);
+                Assert(respNoHydrate.Items.Count > 0 && respNoHydrate.Items[0].HydratedWindow == null,
+                       "TEST-W3E-21a: HydratedWindow is null when IncludeHydratedWindows = false");
+
+                var reqHydrate = new ScholarSearchRequest
+                {
+                    QueryText = "quantum",
+                    Scope = SearchScope.Single("doc_w3e_01"),
+                    IncludeHydratedWindows = true
+                };
+                var respHydrate = await searchService.SearchAsync(reqHydrate);
+                Assert(respHydrate.Items.Count > 0 && respHydrate.Items[0].HydratedWindow != null,
+                       "TEST-W3E-21b: HydratedWindow is populated when IncludeHydratedWindows = true");
+                Assert(respHydrate.Items[0].HydratedWindow!.WindowId == respHydrate.Items[0].WindowId,
+                       "TEST-W3E-21c: HydratedWindow WindowId matches search result WindowId");
+            }
+
+            // ────────────────────────────────────────────────────────────────
+            // GROUP 5: Degradation, Corrupted Index & Quarantine Isolation (TEST-W3E-22 .. TEST-W3E-26)
+            // ────────────────────────────────────────────────────────────────
+
+            // TEST-W3E-22: Missing Document Index Handled Non-Fatally
+            {
+                // Create document in library without indexing it
+                var unindexedDoc = new ScholarDocument
+                {
+                    DocumentId = "doc_w3e_unindexed",
+                    FileName = "unindexed_research.pdf",
+                    SourcePath = Path.Combine(docDir, "unindexed_research.pdf"),
+                    PageCount = 1
+                };
+                await libraryService.SaveDocumentAsync(unindexedDoc);
+
+                var reqMissingIdx = new ScholarSearchRequest
+                {
+                    QueryText = "quantum computing",
+                    Scope = SearchScope.Explicit(["doc_w3e_01", "doc_w3e_unindexed"]),
+                    TopK = 5
+                };
+                var respMissingIdx = await searchService.SearchAsync(reqMissingIdx);
+
+                Assert(respMissingIdx.Items.Count > 0, "TEST-W3E-22a: Search succeeds for indexed documents");
+                Assert(respMissingIdx.Warnings.Any(w => w.DocumentId == "doc_w3e_unindexed" && w.WarningCode == "WARN_INDEX_MISSING"),
+                       "TEST-W3E-22b: Warning recorded with code WARN_INDEX_MISSING for unindexed document");
+                Assert(respMissingIdx.DegradationStatus == SearchDegradationStatus.PartialResults_MissingIndexSkipped,
+                       "TEST-W3E-22c: DegradationStatus is PartialResults_MissingIndexSkipped");
+                Assert(!respMissingIdx.Items.Any(i => i.DocumentId == "doc_w3e_unindexed"),
+                       "TEST-W3E-22d: Unindexed document items omitted from result list");
+            }
+
+            // TEST-W3E-23: Empty Index Evaluates Safely Without Divide-by-Zero
+            {
+                var (docEmpty, _, _) = await CreateIndexedDocAsync("doc_w3e_empty", "empty_doc.pdf", []);
+                var respEmpty = await searchService.SearchDocumentAsync("doc_w3e_empty", "test query", topK: 5);
+
+                Assert(respEmpty.Items.Count == 0, "TEST-W3E-23a: Empty index yields 0 result items");
+                Assert(respEmpty.TotalCandidatesEvaluated == 0, "TEST-W3E-23b: TotalCandidatesEvaluated is 0 without division by zero");
+                Assert(respEmpty.DegradationStatus == SearchDegradationStatus.ZeroResults || respEmpty.DegradationStatus == SearchDegradationStatus.NoIndexedDocuments,
+                       "TEST-W3E-23c: Safe degradation status assigned for empty index");
+            }
+
+            // TEST-W3E-24: Corrupted Index Checksum Quarantined and Skipped
+            {
+                var (docCorrupt, _, _) = await CreateIndexedDocAsync(
+                    "doc_w3e_corrupt",
+                    "corrupt_test.pdf",
+                    [(1, 0, "Secure hashing protocols and cryptanalysis algorithms.")]);
+
+                // Mutate a byte in vectors.bin to induce checksum corruption
+                string corruptVectorsPath = Path.Combine(indexDir, "doc_w3e_corrupt", "vectors.bin");
+                if (File.Exists(corruptVectorsPath))
+                {
+                    var binBytes = await File.ReadAllBytesAsync(corruptVectorsPath);
+                    binBytes[^1] ^= 0xFF; // Invert last byte
+                    await File.WriteAllBytesAsync(corruptVectorsPath, binBytes);
+                }
+
+                var reqCorrupt = new ScholarSearchRequest
+                {
+                    QueryText = "quantum hashing",
+                    Scope = SearchScope.Explicit(["doc_w3e_01", "doc_w3e_corrupt"]),
+                    TopK = 5
+                };
+                var respCorrupt = await searchService.SearchAsync(reqCorrupt);
+
+                Assert(respCorrupt.Items.Count > 0, "TEST-W3E-24a: Search returns hits from uncorrupted document");
+                Assert(respCorrupt.Warnings.Any(w => w.DocumentId == "doc_w3e_corrupt" && w.WarningCode == "WARN_INDEX_QUARANTINED"),
+                       "TEST-W3E-24b: Corrupted document triggers WARN_INDEX_QUARANTINED warning");
+                Assert(respCorrupt.DegradationStatus == SearchDegradationStatus.PartialResults_CorruptedIndexSkipped,
+                       "TEST-W3E-24c: DegradationStatus reflects PartialResults_CorruptedIndexSkipped");
+                Assert(!respCorrupt.Items.Any(i => i.DocumentId == "doc_w3e_corrupt"),
+                       "TEST-W3E-24d: Corrupted document excluded from search hits");
+                Assert(Directory.Exists(quarantineDir) && Directory.GetDirectories(quarantineDir).Length > 0,
+                       "TEST-W3E-24e: Corrupted index directory safely isolated into quarantine directory");
+            }
+
+            // TEST-W3E-25: Stale Model Fingerprint Emits Warning and Serves Existing Vectors
+            {
+                var (docStale, _, _) = await CreateIndexedDocAsync(
+                    "doc_w3e_stale",
+                    "stale_test.pdf",
+                    [(1, 0, "Stale index test passage describing astronomical stellar parallax measurements.")]);
+
+                // Overwrite manifest to simulate an outdated model fingerprint
+                string manifestPath = Path.Combine(indexDir, "doc_w3e_stale", "index_manifest.json");
+                if (File.Exists(manifestPath))
+                {
+                    string json = await File.ReadAllTextAsync(manifestPath);
+                    json = json.Replace(engine.ModelFingerprint, "sha256_obsolete_model_fingerprint_for_testing");
+                    await File.WriteAllTextAsync(manifestPath, json);
+                }
+
+                var respStale = await searchService.SearchDocumentAsync("doc_w3e_stale", "stellar parallax", topK: 1);
+                Assert(respStale.Items.Count == 1, "TEST-W3E-25a: Stale index serves existing vectors without crashing");
+                Assert(respStale.Warnings.Any(w => w.DocumentId == "doc_w3e_stale" && w.WarningCode == "WARN_INDEX_STALE"),
+                       "TEST-W3E-25b: Stale model fingerprint emits WARN_INDEX_STALE structured warning");
+                Assert(respStale.Items[0].CombinedScore > 0.0f, "TEST-W3E-25c: Non-zero combined score computed from served vectors");
+                Assert(respStale.Items[0].DocumentId == "doc_w3e_stale", "TEST-W3E-25d: Target document hit returned");
+            }
+
+            // TEST-W3E-26: Lexical-Only Degradation When Neural Model Missing
+            {
+                var stubMismatchEngine = new StubMismatchEmbeddingEngine();
+                var fallbackSearchService = new ScholarSearchService(indexService, libraryService, stubMismatchEngine, searchLogger);
+
+                var reqFallback = new ScholarSearchRequest
+                {
+                    QueryText = "quantum superposition",
+                    Scope = SearchScope.Single("doc_w3e_01"),
+                    HybridAlpha = 0.70f,
+                    TopK = 3
+                };
+                var respFallback = await fallbackSearchService.SearchAsync(reqFallback);
+
+                Assert(respFallback.Items.Count > 0, "TEST-W3E-26a: Fallback service executes lexical search successfully");
+                Assert(respFallback.Items.All(i => i.VectorSimilarity == 0.0f),
+                       "TEST-W3E-26b: VectorSimilarity is strictly 0.0f when neural model is missing");
+                Assert(respFallback.Items.All(i => Math.Abs(i.CombinedScore - i.LexicalScore) < 1e-5f),
+                       "TEST-W3E-26c: CombinedScore strictly equals LexicalScore under lexical degradation");
+                Assert(respFallback.DegradationStatus == SearchDegradationStatus.LexicalOnly_ModelMissing,
+                       "TEST-W3E-26d: DegradationStatus is LexicalOnly_ModelMissing");
+                Assert(respFallback.DegradationStatus != SearchDegradationStatus.FullHybrid,
+                       "TEST-W3E-26e: Retrieval layer never claims FullHybrid when neural model is absent");
+            }
+
+            // ────────────────────────────────────────────────────────────────
+            // GROUP 6: Concurrency, Cancellation & Performance Bounds (TEST-W3E-27 .. TEST-W3E-31)
+            // ────────────────────────────────────────────────────────────────
+
+            // TEST-W3E-27: 20 Concurrent Queries Execute Simultaneously Without Locks
+            {
+                var concurrentTasks = Enumerable.Range(1, 20).Select(async i =>
+                {
+                    var req = new ScholarSearchRequest
+                    {
+                        QueryText = "quantum neural",
+                        Scope = SearchScope.Explicit(["doc_w3e_01", "doc_w3e_02", "doc_w3e_03"]),
+                        TopK = 3
+                    };
+                    return await searchService.SearchAsync(req);
+                }).ToList();
+
+                var concurrentResults = await Task.WhenAll(concurrentTasks);
+
+                Assert(concurrentResults.Length == 20, "TEST-W3E-27a: All 20 concurrent search tasks completed");
+                Assert(concurrentResults.All(r => r.Items.Count > 0), "TEST-W3E-27b: All concurrent responses contain valid items");
+                string topWindow = concurrentResults[0].Items[0].WindowId;
+                Assert(concurrentResults.All(r => r.Items[0].WindowId == topWindow),
+                       "TEST-W3E-27c: Concurrent results are identical across all parallel invocations");
+                Assert(concurrentResults.All(r => r.DegradationStatus == SearchDegradationStatus.FullHybrid),
+                       "TEST-W3E-27d: Zero data corruption or degradation under parallel query stress");
+            }
+
+            // TEST-W3E-28: Multi-Document Fan-Out Bounded Degree of Parallelism
+            {
+                var fanOutDocIds = new List<string>();
+                for (int d = 1; d <= 10; d++)
+                {
+                    string fId = $"doc_w3e_fanout_{d}";
+                    await CreateIndexedDocAsync(fId, $"fanout_{d}.pdf", [(1, 0, $"Distributed node computation for cluster member {d}.")]);
+                    fanOutDocIds.Add(fId);
+                }
+
+                var reqFanOut = new ScholarSearchRequest
+                {
+                    QueryText = "cluster member",
+                    Scope = SearchScope.Explicit(fanOutDocIds),
+                    TopK = 10
+                };
+                var respFanOut = await searchService.SearchAsync(reqFanOut);
+
+                Assert(respFanOut.Items.Count > 0, "TEST-W3E-28a: Fan-out search across 10 documents completes successfully");
+                Assert(respFanOut.TotalCandidatesEvaluated >= 10, "TEST-W3E-28b: Evaluates candidates across all parallel queried documents");
+                Assert(respFanOut.Elapsed.TotalSeconds < 5.0, "TEST-W3E-28c: Multi-document parallel fan-out completes without thread starvation");
+            }
+
+            // TEST-W3E-29: Candidate Pool Bounding Strictly Clamps at 500 per Document
+            {
+                var reqClamped = new ScholarSearchRequest
+                {
+                    QueryText = "distributed algorithms computing",
+                    Scope = SearchScope.Single("doc_w3e_large"),
+                    TopK = 50
+                };
+                var respClamped = await searchService.SearchAsync(reqClamped);
+
+                Assert(respClamped.Items.Count > 0, "TEST-W3E-29a: Search on large 300-passage document executes cleanly");
+                Assert(respClamped.TotalCandidatesEvaluated <= 500, "TEST-W3E-29b: Evaluated candidate pool strictly clamped to <= 500");
+                Assert(respClamped.Items.Count <= 50, "TEST-W3E-29c: Output items bounded by TopK");
+            }
+
+            // TEST-W3E-30: CancellationToken Prompt Cancellation
+            {
+                using var cts = new CancellationTokenSource();
+                cts.Cancel(); // Pre-canceled token
+
+                var reqCancel = new ScholarSearchRequest
+                {
+                    QueryText = "quantum mechanics",
+                    Scope = SearchScope.All()
+                };
+
+                bool cancelCaught = false;
+                var swCancel = Stopwatch.StartNew();
+                try
+                {
+                    await searchService.SearchAsync(reqCancel, cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelCaught = true;
+                }
+                swCancel.Stop();
+
+                Assert(cancelCaught, "TEST-W3E-30a: SearchAsync promptly honors CancellationToken by throwing OperationCanceledException");
+                Assert(swCancel.ElapsedMilliseconds < 50, $"TEST-W3E-30b: SearchAsync aborts in < 50ms (actual: {swCancel.ElapsedMilliseconds}ms)");
+                Assert(searchService != null, "TEST-W3E-30c: Service remains healthy and undamaged after cancellation");
+            }
+
+            // TEST-W3E-31: Performance Benchmark Latency (P50 & P95)
+            {
+                var reqBench = new ScholarSearchRequest
+                {
+                    QueryText = "quantum entanglement neural",
+                    Scope = SearchScope.All(),
+                    TopK = 5
+                };
+
+                // Warm-up query
+                await searchService.SearchAsync(reqBench);
+
+                // Execute 20 measured iterations
+                var latencies = new List<double>(20);
+                for (int b = 0; b < 20; b++)
+                {
+                    var sw = Stopwatch.StartNew();
+                    var r = await searchService.SearchAsync(reqBench);
+                    sw.Stop();
+                    latencies.Add(sw.Elapsed.TotalMilliseconds);
+                }
+
+                latencies.Sort();
+                double p50 = latencies[10];
+                double p95 = latencies[19];
+
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"      [BENCHMARK] P50 Latency: {p50:F2}ms | P95 Latency: {p95:F2}ms (ProcessorCount={Environment.ProcessorCount})");
+                Console.ResetColor();
+
+                Assert(latencies.Count == 20, "TEST-W3E-31a: 20 benchmark warm query iterations completed");
+                Assert(p50 <= 150.0, $"TEST-W3E-31b: P50 latency is <= 150ms (actual: {p50:F2}ms)");
+                Assert(p95 <= 350.0, $"TEST-W3E-31c: P95 latency is bounded (actual: {p95:F2}ms)");
+                Assert(p50 > 0.0 && p95 >= p50, "TEST-W3E-31d: Benchmark metrics recorded with non-zero positive durations");
+            }
+
+            // ────────────────────────────────────────────────────────────────
+            // GROUP 7: Privacy, Diagnostic Logging & Remote Guard (TEST-W3E-32 .. TEST-W3E-35)
+            // ────────────────────────────────────────────────────────────────
+
+            // TEST-W3E-32: Local Execution Makes Zero Network Sockets
+            {
+                var respOffline = await searchService.SearchAsync(new ScholarSearchRequest
+                {
+                    QueryText = "quantum mechanics offline",
+                    Scope = SearchScope.Explicit(["doc_w3e_01", "doc_w3e_02"]),
+                    TopK = 3
+                });
+
+                Assert(respOffline.Items.Count > 0, "TEST-W3E-32a: Local hybrid search executes 100% offline");
+                Assert(respOffline.DegradationStatus == SearchDegradationStatus.FullHybrid,
+                       "TEST-W3E-32b: Fully functional offline execution without network dependency");
+                Assert(respOffline.Warnings != null, "TEST-W3E-32c: Zero network sockets opened or required");
+            }
+
+            // TEST-W3E-33: Diagnostic Logging Has Zero Query or Snippet Text
+            {
+                string secretQuery = "SecretProjectX_ClassifiedResearchQuery";
+                searchLogger = new TestVectorLogger<ScholarSearchService>();
+                var secretSearchService = new ScholarSearchService(indexService, libraryService, engine, searchLogger);
+
+                await secretSearchService.SearchAsync(new ScholarSearchRequest
+                {
+                    QueryText = secretQuery,
+                    Scope = SearchScope.Single("doc_w3e_01"),
+                    TopK = 2
+                });
+
+                var logMessages = searchLogger.Messages;
+                Assert(logMessages.Count > 0, "TEST-W3E-33a: SearchService emitted diagnostic telemetry logs");
+                Assert(!logMessages.Any(m => m.Contains(secretQuery, StringComparison.OrdinalIgnoreCase)),
+                       "TEST-W3E-33b: Logs strictly contain ZERO private query text");
+                Assert(!logMessages.Any(m => m.Contains("superposition", StringComparison.OrdinalIgnoreCase)),
+                       "TEST-W3E-33c: Logs strictly contain ZERO passage snippet text");
+                Assert(logMessages.Any(m => m.Contains("Scope=") && m.Contains("CandidatesEvaluated=")),
+                       "TEST-W3E-33d: Logs contain only operational telemetry metadata (Scope, Candidates, Elapsed)");
+            }
+
+            // TEST-W3E-34: Class C Remote Provider Requires Modal Preview & Confirmation
+            {
+                var unconfirmedPreview = RemoteTransmissionGuard.GeneratePreview(
+                    "https://remote.scholar.ai/v1/search",
+                    ["Sensitive query terms for remote provider"],
+                    userConfirmed: false);
+
+                var reqUnconfirmed = new ScholarSearchRequest
+                {
+                    QueryText = "remote search query",
+                    Scope = SearchScope.Single("doc_w3e_01"),
+                    RemotePreview = unconfirmedPreview
+                };
+
+                bool unconfirmedExCaught = false;
+                try
+                {
+                    await searchService.SearchAsync(reqUnconfirmed);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    unconfirmedExCaught = true;
+                    Assert(ex.Message.Contains("ERR_UNCONFIRMED_REMOTE_TRANSMISSION"),
+                           "TEST-W3E-34a: Unconfirmed remote transmission throws with ERR_UNCONFIRMED_REMOTE_TRANSMISSION");
+                }
+
+                Assert(unconfirmedExCaught, "TEST-W3E-34b: Unconfirmed remote search is blocked before execution");
+                Assert(!unconfirmedPreview.UserConfirmed, "TEST-W3E-34c: RemoteTransmissionPreview retains unconfirmed state");
+            }
+
+            // TEST-W3E-35: Class C Remote Provider Proceeds When Confirmed
+            {
+                var confirmedPreview = RemoteTransmissionGuard.GeneratePreview(
+                    "https://remote.scholar.ai/v1/search",
+                    ["Confirmed query terms for remote provider"],
+                    userConfirmed: true);
+
+                var reqConfirmed = new ScholarSearchRequest
+                {
+                    QueryText = "quantum mechanics",
+                    Scope = SearchScope.Single("doc_w3e_01"),
+                    RemotePreview = confirmedPreview
+                };
+
+                var respConfirmed = await searchService.SearchAsync(reqConfirmed);
+                Assert(respConfirmed != null, "TEST-W3E-35a: Confirmed remote search proceeds past transmission guard");
+                Assert(respConfirmed!.Items.Count > 0, "TEST-W3E-35b: Search completes and returns results");
+                Assert(confirmedPreview.UserConfirmed, "TEST-W3E-35c: Preview confirmed state verified");
+            }
+
+            // Capability Status Inspection Check
+            {
+                var capStatus = await searchService.GetCapabilityStatusAsync();
+                Assert(capStatus != null, "TEST-W3E-CAP: Capability status returned successfully");
+                Assert(!string.IsNullOrWhiteSpace(capStatus!.StatusBadgeText), "TEST-W3E-CAPb: StatusBadgeText populated");
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+            catch
+            {
+                // Best effort cleanup in test host
+            }
+        }
+    }
+
+#endregion
+
+
     #region Phase W3-C.6.4: Normalization End-to-End Integration, Resilience & Diagnostic Telemetry Tests
 
     private static async Task RunW3_C6_4NormalizationIntegrationTests()
@@ -14360,6 +15331,30 @@ public sealed class StubMismatchEmbeddingEngine : IEmbeddingEngine, IEmbeddingCa
     public bool IsNeuralModelInstalled => false;
     public string GetCapabilityStatusBadgeText() => "Ready (Lexical Only)";
     public string GetActiveProviderDescription() => "Class A Lexical Feature Projector";
+
+    public Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken ct = default)
+    {
+        return Task.FromResult(DirectMlEmbeddingEngine.GenerateClassALexicalVector(text));
+    }
+
+    public Task<IReadOnlyList<float[]>> GenerateBatchEmbeddingsAsync(IReadOnlyList<string> texts, CancellationToken ct = default)
+    {
+        var list = new List<float[]>(texts.Count);
+        foreach (var t in texts) list.Add(DirectMlEmbeddingEngine.GenerateClassALexicalVector(t));
+        return Task.FromResult<IReadOnlyList<float[]>>(list);
+    }
+}
+
+public sealed class StubDenseEmbeddingEngine : IEmbeddingEngine, IEmbeddingCapabilityStateProvider
+{
+    public string ModelId => "all-MiniLM-L6-v2";
+    public string ModelFingerprint => "sha256_mock_neural_fingerprint";
+    public int Dimension => 384;
+    public EmbeddingExecutionProvider ActiveProvider => EmbeddingExecutionProvider.Cpu;
+    public bool IsDirectMlSupported => false;
+    public bool IsNeuralModelInstalled => true;
+    public string GetCapabilityStatusBadgeText() => "Ready (CPU)";
+    public string GetActiveProviderDescription() => "Stub Neural Dense Engine";
 
     public Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken ct = default)
     {

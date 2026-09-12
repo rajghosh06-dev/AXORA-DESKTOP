@@ -145,6 +145,9 @@ public sealed partial class App : Application
                 services.AddSingleton<ScholarVectorIndexReader>();
                 services.AddSingleton<IScholarIndexService, ScholarIndexService>();
 
+                // ── Scholar Search & Retrieval Services (Phase W3-E) ───────────────
+                services.AddSingleton<IScholarSearchService, ScholarSearchService>();
+
                 // ── Extension & Dependency Manager Services (Phase W1.5) ──────────
                 services.AddSingleton<IExtensionCacheService, ExtensionCacheService>();
                 services.AddSingleton<IExtensionRegistry, ExtensionRegistry>();
