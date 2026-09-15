@@ -97,6 +97,37 @@ public sealed class AppSettingsService : IAppSettingsService
         set { if (_data.Argon2Iterations != value) { _data.Argon2Iterations = value; OnPropertyChanged(); } }
     }
 
+    // W4 Voice Subsystem settings
+    public string? SelectedVoiceId
+    {
+        get => _data.SelectedVoiceId;
+        set { if (_data.SelectedVoiceId != value) { _data.SelectedVoiceId = value; OnPropertyChanged(); } }
+    }
+
+    public double SpeechRate
+    {
+        get => _data.SpeechRate;
+        set { if (Math.Abs(_data.SpeechRate - value) > 0.001) { _data.SpeechRate = value; OnPropertyChanged(); } }
+    }
+
+    public double SpeechPitch
+    {
+        get => _data.SpeechPitch;
+        set { if (Math.Abs(_data.SpeechPitch - value) > 0.001) { _data.SpeechPitch = value; OnPropertyChanged(); } }
+    }
+
+    public bool IsVoiceNavigationEnabled
+    {
+        get => _data.IsVoiceNavigationEnabled;
+        set { if (_data.IsVoiceNavigationEnabled != value) { _data.IsVoiceNavigationEnabled = value; OnPropertyChanged(); } }
+    }
+
+    public bool IsAutoPunctuationEnabled
+    {
+        get => _data.IsAutoPunctuationEnabled;
+        set { if (_data.IsAutoPunctuationEnabled != value) { _data.IsAutoPunctuationEnabled = value; OnPropertyChanged(); } }
+    }
+
     public void Save()
     {
         try
@@ -161,5 +192,12 @@ public sealed class AppSettingsService : IAppSettingsService
         // FEAT-6: Argon2id parameters persisted to settings.json
         public int Argon2MemoryMb { get; set; } = 64;
         public int Argon2Iterations { get; set; } = 3;
+
+        // W4: Voice Subsystem settings
+        public string? SelectedVoiceId { get; set; } = null;
+        public double SpeechRate { get; set; } = 1.0;
+        public double SpeechPitch { get; set; } = 1.0;
+        public bool IsVoiceNavigationEnabled { get; set; } = false; // Disabled by default on first launch
+        public bool IsAutoPunctuationEnabled { get; set; } = true;
     }
 }

@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using SkiaSharp;
 using Axora.Desktop.Helpers;
 using Axora.Desktop.Models;
+using Axora.Desktop.Models.Voice;
 using Axora.Desktop.Services;
 using Axora.Desktop.Services.Contracts;
 using Axora.Desktop.ViewModels;
@@ -141,6 +142,9 @@ public partial class Program
 
             // Phase W3-F Tests: Study Synthesis Engine Stage
             await RunW3_FStudySynthesisEngineTests();
+
+            // Phase W4 Tests: Voice Subsystem & Capabilities
+            await RunW4VoiceSubsystemTests();
         }
         catch (Exception ex)
         {
@@ -14859,16 +14863,48 @@ Key Principles:
 public sealed class MockSpeechSynthesisService : ISpeechSynthesisService
 {
     public bool IsSpeaking { get; private set; }
+    public VoiceInfo? CurrentVoice { get; private set; } = new("mock_voice", "Mock System Voice", "en-US", "Neutral", "Mock voice for testing", true);
+    public IReadOnlyList<VoiceInfo> AvailableVoices { get; } = new List<VoiceInfo>
+    {
+        new("mock_voice", "Mock System Voice", "en-US", "Neutral", "Mock voice for testing", true)
+    };
+    public double SpeechRate { get; set; } = 1.0;
+    public double SpeechPitch { get; set; } = 1.0;
+    public double SpeechVolume { get; set; } = 1.0;
+
+    public event EventHandler<SpeechPlaybackStateChangedEventArgs>? PlaybackStateChanged;
+
+    public Task InitializeAsync(CancellationToken ct = default) => Task.CompletedTask;
 
     public Task SpeakTextAsync(string text, double pitch = 1.0, double rate = 1.0, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(text)) return Task.CompletedTask;
+
         IsSpeaking = true;
+        PlaybackStateChanged?.Invoke(this, new SpeechPlaybackStateChangedEventArgs(true, CurrentVoice?.Id));
         return Task.CompletedTask;
     }
 
     public void Stop()
     {
-        IsSpeaking = false;
+        if (IsSpeaking)
+        {
+            IsSpeaking = false;
+            PlaybackStateChanged?.Invoke(this, new SpeechPlaybackStateChangedEventArgs(false, CurrentVoice?.Id));
+        }
+    }
+
+    public void Pause() { }
+    public void Resume() { }
+
+    public void SetVoice(string voiceId)
+    {
+        CurrentVoice = AvailableVoices.FirstOrDefault(v => v.Id == voiceId) ?? CurrentVoice;
+    }
+
+    public void Dispose()
+    {
+        Stop();
     }
 }
 
@@ -15136,8 +15172,14 @@ public sealed class DummyDocumentProcessorService : IDocumentProcessorService
 public sealed class DummyVoiceTranscriberService : IVoiceTranscriberService
 {
     public bool IsRecording => false;
+    public AudioCaptureHealth DeviceHealth => AudioCaptureHealth.Healthy;
+    public event EventHandler<VoiceTranscriberStateChangedEventArgs>? StateChanged;
+
+    public Task<bool> CheckPrerequisitesAsync(CancellationToken ct = default) => Task.FromResult(true);
     public Task StartDictationAsync(Action<string> onTextRecognized, CancellationToken ct = default) => Task.CompletedTask;
+    public Task StartDictationAsync(Action<TranscriptionChunk> onChunkRecognized, CancellationToken ct = default) => Task.CompletedTask;
     public Task StopDictationAsync() => Task.CompletedTask;
+    public void Dispose() { }
 }
 
 public sealed class DummyDocumentChatService : IDocumentChatService

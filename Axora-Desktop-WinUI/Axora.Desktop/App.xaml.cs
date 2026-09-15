@@ -73,6 +73,10 @@ public sealed partial class App : Application
                 services.AddSingleton<IIntelligentCompressorService, IntelligentCompressorService>();
                 services.AddSingleton<ISpeechSynthesisService, SpeechSynthesisService>();
                 services.AddSingleton<IVoiceTranscriberService, VoiceTranscriberService>();
+                services.AddSingleton<IVoiceTextFormatter, VoiceTextFormatter>();
+                services.AddSingleton<IVoiceCommandRouter, VoiceCommandRouter>();
+                services.AddSingleton<IAudioDeviceMonitor, AudioDeviceMonitor>();
+                services.AddSingleton<IVoiceCoordinator, VoiceCoordinator>();
                 services.AddSingleton<IDocumentChatService, DocumentChatService>();
                 services.AddSingleton<ITrayService, TrayService>();
                 services.AddSingleton<IP2pSyncService, P2pSyncService>();
@@ -255,6 +259,20 @@ public sealed partial class App : Application
                 catch (Exception ex)
                 {
                     Log($"P2P stop error: {ex.Message}");
+                }
+            }
+
+            var voiceCoord = TryGetService<IVoiceCoordinator>();
+            if (voiceCoord != null)
+            {
+                try
+                {
+                    voiceCoord.Dispose();
+                    Log("VoiceCoordinator disposed.");
+                }
+                catch (Exception ex)
+                {
+                    Log($"VoiceCoordinator disposal error: {ex.Message}");
                 }
             }
 

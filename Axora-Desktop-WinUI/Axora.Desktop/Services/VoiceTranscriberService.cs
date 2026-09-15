@@ -1,51 +1,97 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Windows.Globalization;
 using Windows.Media.SpeechRecognition;
 using Microsoft.Extensions.Logging;
+using Axora.Desktop.Models.Voice;
 using Axora.Desktop.Services.Contracts;
 
 namespace Axora.Desktop.Services;
 
 /// <summary>
-/// Voice Dictation &amp; Speech Transcriber using native Windows.Media.SpeechRecognition.
-/// Captures microphone audio streams and transcribes speech into formatted text with punctuation.
-///
-/// Memory Safety: Previous SpeechRecognizer instance is always disposed before creating a new
-/// one to prevent hardware microphone handle accumulation across start/stop cycles.
-/// Locking: A SemaphoreSlim serializes concurrent start/stop calls to prevent race conditions.
+/// Voice dictation service using Windows.Media.SpeechRecognition.
+/// Treats Windows speech recognition as an environment-dependent capability,
+/// gracefully handles permission denial (0x80070005), missing language resources,
+/// and deterministically disposes WinRT handles across start/stop cycles.
 /// </summary>
 public sealed class VoiceTranscriberService : IVoiceTranscriberService, IDisposable
 {
-    private readonly ILogger<VoiceTranscriberService> _logger;
+    private readonly ILogger<VoiceTranscriberService>? _logger;
     private readonly SemaphoreSlim _startStopLock = new(1, 1);
     private SpeechRecognizer? _recognizer;
-    private Action<string>? _callback;
+    private Action<TranscriptionChunk>? _chunkCallback;
+    private Action<string>? _stringCallback;
     private volatile bool _isRecording;
+    private AudioCaptureHealth _deviceHealth = AudioCaptureHealth.Healthy;
 
     public bool IsRecording => _isRecording;
+    public AudioCaptureHealth DeviceHealth => _deviceHealth;
 
-    public VoiceTranscriberService(ILogger<VoiceTranscriberService> logger)
+    public event EventHandler<VoiceTranscriberStateChangedEventArgs>? StateChanged;
+
+    public VoiceTranscriberService(ILogger<VoiceTranscriberService>? logger = null)
     {
         _logger = logger;
     }
 
-    public async Task StartDictationAsync(Action<string> onTextRecognized, CancellationToken ct = default)
+    public async Task<bool> CheckPrerequisitesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var systemLanguage = SpeechRecognizer.SystemSpeechLanguage;
+            bool isSupported = SpeechRecognizer.SupportedTopicLanguages.Contains(systemLanguage);
+            if (!isSupported)
+            {
+                _deviceHealth = AudioCaptureHealth.RecognitionUnavailable;
+                _logger?.LogWarning("System speech language {Lang} is not in SupportedTopicLanguages.", systemLanguage.DisplayName);
+                return false;
+            }
+            _deviceHealth = AudioCaptureHealth.Healthy;
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            _deviceHealth = AudioCaptureHealth.PermissionDenied;
+            return false;
+        }
+        catch (Exception ex) when ((uint)ex.HResult == 0x80070005)
+        {
+            _deviceHealth = AudioCaptureHealth.PermissionDenied;
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to check speech recognition prerequisites.");
+            _deviceHealth = AudioCaptureHealth.RecognitionUnavailable;
+            return false;
+        }
+    }
+
+    public Task StartDictationAsync(Action<string> onTextRecognized, CancellationToken ct = default)
+    {
+        _stringCallback = onTextRecognized;
+        return StartDictationInternalAsync(ct);
+    }
+
+    public Task StartDictationAsync(Action<TranscriptionChunk> onChunkRecognized, CancellationToken ct = default)
+    {
+        _chunkCallback = onChunkRecognized;
+        return StartDictationInternalAsync(ct);
+    }
+
+    private async Task StartDictationInternalAsync(CancellationToken ct = default)
     {
         await _startStopLock.WaitAsync(ct);
         try
         {
             if (_isRecording) return;
 
-            // FIX W-4: Always dispose previous recognizer before allocating a new one.
-            // Rapid start/stop cycles without this accumulate unmanaged WinRT microphone handles.
-            _recognizer?.Dispose();
-            _recognizer = null;
+            // R-VOICE-14: Explicitly dispose previous recognizer before creating a new one
+            // to release native WASAPI microphone capture handles.
+            DisposeRecognizer();
 
-            _callback = onTextRecognized;
-
-            _recognizer = new SpeechRecognizer(SpeechRecognizer.SystemSpeechLanguage);
+            var language = SpeechRecognizer.SystemSpeechLanguage;
+            _recognizer = new SpeechRecognizer(language);
             var topicConstraint = new SpeechRecognitionTopicConstraint(
                 SpeechRecognitionScenario.Dictation, "Dictation");
             _recognizer.Constraints.Add(topicConstraint);
@@ -53,24 +99,45 @@ public sealed class VoiceTranscriberService : IVoiceTranscriberService, IDisposa
             var compilationResult = await _recognizer.CompileConstraintsAsync();
             if (compilationResult.Status != SpeechRecognitionResultStatus.Success)
             {
-                _logger.LogWarning("SpeechRecognizer compilation failed: {Status}", compilationResult.Status);
-                _recognizer.Dispose();
-                _recognizer = null;
+                _deviceHealth = AudioCaptureHealth.RecognitionUnavailable;
+                _logger?.LogWarning("SpeechRecognizer constraint compilation failed: {Status}", compilationResult.Status);
+                DisposeRecognizer();
+                StateChanged?.Invoke(this, new VoiceTranscriberStateChangedEventArgs(false, _deviceHealth));
                 return;
             }
 
             _recognizer.ContinuousRecognitionSession.ResultGenerated += OnResultGenerated;
+            _recognizer.ContinuousRecognitionSession.Completed += OnSessionCompleted;
 
             await _recognizer.ContinuousRecognitionSession.StartAsync();
             _isRecording = true;
-            _logger.LogInformation("Voice dictation session started");
+            _deviceHealth = AudioCaptureHealth.Healthy;
+            _logger?.LogInformation("Voice dictation session started (Language: {Lang})", language.DisplayName);
+            StateChanged?.Invoke(this, new VoiceTranscriberStateChangedEventArgs(true, _deviceHealth));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _isRecording = false;
+            _deviceHealth = AudioCaptureHealth.PermissionDenied;
+            DisposeRecognizer();
+            _logger?.LogWarning(ex, "Microphone access denied during dictation start (0x80070005).");
+            StateChanged?.Invoke(this, new VoiceTranscriberStateChangedEventArgs(false, _deviceHealth));
+        }
+        catch (Exception ex) when ((uint)ex.HResult == 0x80070005)
+        {
+            _isRecording = false;
+            _deviceHealth = AudioCaptureHealth.PermissionDenied;
+            DisposeRecognizer();
+            _logger?.LogWarning(ex, "Microphone access denied (0x80070005).");
+            StateChanged?.Invoke(this, new VoiceTranscriberStateChangedEventArgs(false, _deviceHealth));
         }
         catch (Exception ex)
         {
             _isRecording = false;
-            _recognizer?.Dispose();
-            _recognizer = null;
-            _logger.LogWarning(ex, "Failed to start speech dictation session");
+            _deviceHealth = AudioCaptureHealth.RecognitionUnavailable;
+            DisposeRecognizer();
+            _logger?.LogWarning(ex, "Failed to start speech dictation session.");
+            StateChanged?.Invoke(this, new VoiceTranscriberStateChangedEventArgs(false, _deviceHealth));
         }
         finally
         {
@@ -85,21 +152,24 @@ public sealed class VoiceTranscriberService : IVoiceTranscriberService, IDisposa
         {
             if (!_isRecording || _recognizer == null) return;
 
-            // Detach handler before stopping to prevent late callbacks against disposed resources
-            _recognizer.ContinuousRecognitionSession.ResultGenerated -= OnResultGenerated;
-
             try
             {
+                // Detach handler before stopping to prevent race conditions with disposed state
+                _recognizer.ContinuousRecognitionSession.ResultGenerated -= OnResultGenerated;
+                _recognizer.ContinuousRecognitionSession.Completed -= OnSessionCompleted;
+
                 await _recognizer.ContinuousRecognitionSession.StopAsync();
-                _logger.LogInformation("Voice dictation session stopped");
+                _logger?.LogInformation("Voice dictation session stopped.");
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error stopping speech dictation");
+                _logger?.LogWarning(ex, "Error stopping continuous speech recognition session.");
             }
             finally
             {
                 _isRecording = false;
+                DisposeRecognizer();
+                StateChanged?.Invoke(this, new VoiceTranscriberStateChangedEventArgs(false, _deviceHealth));
             }
         }
         finally
@@ -110,21 +180,50 @@ public sealed class VoiceTranscriberService : IVoiceTranscriberService, IDisposa
 
     private void OnResultGenerated(SpeechContinuousRecognitionSession sender, SpeechContinuousRecognitionResultGeneratedEventArgs args)
     {
-        if (!string.IsNullOrWhiteSpace(args.Result.Text))
+        string text = args.Result.Text;
+        if (!string.IsNullOrWhiteSpace(text))
         {
-            _callback?.Invoke(args.Result.Text);
+            _stringCallback?.Invoke(text);
+            _chunkCallback?.Invoke(new TranscriptionChunk(
+                RawText: text,
+                FormattedText: text,
+                IsFinal: args.Result.Status == SpeechRecognitionResultStatus.Success
+            ));
+        }
+    }
+
+    private void OnSessionCompleted(SpeechContinuousRecognitionSession sender, SpeechContinuousRecognitionCompletedEventArgs args)
+    {
+        _isRecording = false;
+        _logger?.LogInformation("Continuous recognition session completed. Status: {Status}", args.Status);
+        StateChanged?.Invoke(this, new VoiceTranscriberStateChangedEventArgs(false, _deviceHealth));
+    }
+
+    private void DisposeRecognizer()
+    {
+        if (_recognizer != null)
+        {
+            try
+            {
+                _recognizer.ContinuousRecognitionSession.ResultGenerated -= OnResultGenerated;
+                _recognizer.ContinuousRecognitionSession.Completed -= OnSessionCompleted;
+                _recognizer.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Error disposing SpeechRecognizer instance.");
+            }
+            finally
+            {
+                _recognizer = null;
+            }
         }
     }
 
     public void Dispose()
     {
         _isRecording = false;
-        if (_recognizer is not null)
-        {
-            _recognizer.ContinuousRecognitionSession.ResultGenerated -= OnResultGenerated;
-            _recognizer.Dispose();
-            _recognizer = null;
-        }
+        DisposeRecognizer();
         _startStopLock.Dispose();
     }
 }

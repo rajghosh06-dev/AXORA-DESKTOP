@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 
 namespace Axora.Desktop.Services.Contracts;
@@ -15,6 +16,13 @@ public interface IAppSettingsService : INotifyPropertyChanged
     // FEAT-6: Argon2id advanced cryptography settings
     int Argon2MemoryMb { get; set; }
     int Argon2Iterations { get; set; }
+
+    // W4 Voice Subsystem settings
+    string? SelectedVoiceId { get; set; }
+    double SpeechRate { get; set; }
+    double SpeechPitch { get; set; }
+    bool IsVoiceNavigationEnabled { get; set; }
+    bool IsAutoPunctuationEnabled { get; set; }
 
     Exception? LastPersistenceError { get; }
 

@@ -15,6 +15,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using Axora.Desktop.Helpers;
 using Axora.Desktop.Models;
+using Axora.Desktop.Models.Voice;
 using Axora.Desktop.Services.Contracts;
 
 namespace Axora.Desktop.ViewModels;
@@ -35,6 +36,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     private readonly IAppSettingsService _settings;
     private readonly IScholarLibraryService? _scholarLibrary;
     private readonly IScholarSynthesisEngine? _synthesisEngine;
+    private readonly IVoiceCoordinator? _voiceCoordinator;
     private readonly DispatcherQueue? _dispatcher;
     private DateTime _currentSessionCreatedAt = DateTime.UtcNow;
     private bool _isSuppressingChangeTracking;
@@ -54,7 +56,8 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         IScannerService scannerService,
         IAppSettingsService settings,
         IScholarLibraryService? scholarLibrary = null,
-        IScholarSynthesisEngine? synthesisEngine = null)
+        IScholarSynthesisEngine? synthesisEngine = null,
+        IVoiceCoordinator? voiceCoordinator = null)
     {
         _ocrService = ocrService;
         _pdfService = pdfService;
@@ -66,6 +69,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         _settings = settings;
         _scholarLibrary = scholarLibrary;
         _synthesisEngine = synthesisEngine;
+        _voiceCoordinator = voiceCoordinator;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
         // Partial properties cannot have initializers (CS8050) — set defaults in constructor
@@ -431,7 +435,14 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     {
         if (IsDictating)
         {
-            await _voiceTranscriber.StopDictationAsync();
+            if (_voiceCoordinator != null)
+            {
+                await _voiceCoordinator.RequestStopDictationAsync();
+            }
+            else
+            {
+                await _voiceTranscriber.StopDictationAsync();
+            }
             IsDictating = false;
             StatusMessage = "Voice dictation stopped.";
         }
@@ -440,11 +451,11 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
             StatusMessage = "🎙️ Listening… speak naturally (WinRT Speech Recognition)";
             IsDictating = true;
 
-            await _voiceTranscriber.StartDictationAsync(text =>
+            Action<string> onChunkReceived = text =>
             {
                 if (!string.IsNullOrWhiteSpace(text))
                 {
-                    _dispatcher.TryEnqueue(() =>
+                    _dispatcher?.TryEnqueue(() =>
                     {
                         OcrResultText = string.IsNullOrEmpty(OcrResultText)
                             ? text
@@ -455,7 +466,21 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
                         _ = _documentChat.IndexDocumentAsync(OcrResultText);
                     });
                 }
-            });
+            };
+
+            if (_voiceCoordinator != null)
+            {
+                bool started = await _voiceCoordinator.RequestStartDictationAsync(onChunkReceived);
+                if (!started)
+                {
+                    IsDictating = false;
+                    StatusMessage = "Microphone unavailable or permission denied.";
+                }
+            }
+            else
+            {
+                await _voiceTranscriber.StartDictationAsync(onChunkReceived);
+            }
         }
     }
 
@@ -464,7 +489,14 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     {
         if (IsSpeaking)
         {
-            _speechService.Stop();
+            if (_voiceCoordinator != null)
+            {
+                _voiceCoordinator.RequestStopSpeech();
+            }
+            else
+            {
+                _speechService.Stop();
+            }
             IsSpeaking = false;
             StatusMessage = "Speech playback stopped.";
         }
@@ -477,11 +509,18 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
             }
 
             IsSpeaking = true;
-            StatusMessage = "🔊 Reading document text aloud via Windows Neural TTS…";
+            StatusMessage = "🔊 Reading document text aloud via system-provided speech voices…";
 
             try
             {
-                await _speechService.SpeakTextAsync(OcrResultText, pitch: SpeechPitch, rate: SpeechRate);
+                if (_voiceCoordinator != null)
+                {
+                    await _voiceCoordinator.RequestSpeakAsync(OcrResultText, pitch: SpeechPitch, rate: SpeechRate);
+                }
+                else
+                {
+                    await _speechService.SpeakTextAsync(OcrResultText, pitch: SpeechPitch, rate: SpeechRate);
+                }
             }
             finally
             {
@@ -498,7 +537,14 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
 
         if (message.IsSpeaking)
         {
-            _speechService.Stop();
+            if (_voiceCoordinator != null)
+            {
+                _voiceCoordinator.RequestStopSpeech();
+            }
+            else
+            {
+                _speechService.Stop();
+            }
             message.IsSpeaking = false;
             return;
         }
@@ -509,7 +555,14 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         message.IsSpeaking = true;
         try
         {
-            await _speechService.SpeakTextAsync(message.Message, pitch: SpeechPitch, rate: SpeechRate);
+            if (_voiceCoordinator != null)
+            {
+                await _voiceCoordinator.RequestSpeakAsync(message.Message, pitch: SpeechPitch, rate: SpeechRate);
+            }
+            else
+            {
+                await _speechService.SpeakTextAsync(message.Message, pitch: SpeechPitch, rate: SpeechRate);
+            }
         }
         finally
         {
@@ -1241,7 +1294,11 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ClearResults()
     {
-        _speechService.Stop();
+        if (_voiceCoordinator != null)
+            _voiceCoordinator.RequestStopSpeech();
+        else
+            _speechService.Stop();
+
         OcrResultText = string.Empty;
         MarkdownText = string.Empty;
         StructuredJsonText = string.Empty;
@@ -1279,14 +1336,29 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        _speechService.Stop();
-        if (_voiceTranscriber.IsRecording)
+        if (_voiceCoordinator != null)
         {
-            _ = Task.Run(async () =>
+            _voiceCoordinator.RequestStopSpeech();
+            if (_voiceCoordinator.CurrentState == VoiceSessionState.Dictating)
             {
-                try { await _voiceTranscriber.StopDictationAsync(); }
-                catch { /* Swallow */ }
-            });
+                _ = Task.Run(async () =>
+                {
+                    try { await _voiceCoordinator.RequestStopDictationAsync(); }
+                    catch { /* Swallow */ }
+                });
+            }
+        }
+        else
+        {
+            _speechService.Stop();
+            if (_voiceTranscriber.IsRecording)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try { await _voiceTranscriber.StopDictationAsync(); }
+                    catch { /* Swallow */ }
+                });
+            }
         }
     }
 }

@@ -3,23 +3,28 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
+using Axora.Desktop.Models.Voice;
+using Axora.Desktop.Services.Contracts;
 
 namespace Axora.Desktop.ViewModels;
 
 /// <summary>
 /// Settings ViewModel — manages application preferences, P2P background server behavior,
-/// and local data retention policies via IAppSettingsService (%APPDATA%\Axora\settings.json).
+/// voice synthesis / navigation settings, and local data retention policies via IAppSettingsService (%APPDATA%\Axora\settings.json).
 ///
 /// FEAT-6: IsDirty tracking drives the floating save/revert pill in SettingsPage.xaml.
 /// All OnXxxChanged partial methods mark IsDirty=true when any setting is modified.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
-    private readonly Services.Contracts.IAppSettingsService _settingsService;
-    private readonly Services.Contracts.IThemeService? _themeService;
+    private readonly IAppSettingsService _settingsService;
+    private readonly IThemeService? _themeService;
+    private readonly ISpeechSynthesisService? _speechService;
+    private readonly IAudioDeviceMonitor? _deviceMonitor;
     private bool _isLoading; // Guard to suppress IsDirty during LoadSettings()
 
     [ObservableProperty] private int _selectedThemeIndex;
@@ -39,14 +44,48 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int _argon2MemoryMb = 64;
     [ObservableProperty] private int _argon2Iterations = 3;
 
+    // W4 Voice Subsystem settings
+    [ObservableProperty] private string? _selectedVoiceId;
+    [ObservableProperty] private double _speechRate = 1.0;
+    [ObservableProperty] private double _speechPitch = 1.0;
+    [ObservableProperty] private bool _isVoiceNavigationEnabled;
+    [ObservableProperty] private bool _isAutoPunctuationEnabled = true;
+    [ObservableProperty] private string _microphoneStatusText = "Checking...";
+    [ObservableProperty] private IReadOnlyList<VoiceInfo> _availableVoices = Array.Empty<VoiceInfo>();
+
     public SettingsViewModel(
-        Services.Contracts.IAppSettingsService settingsService,
-        Services.Contracts.IThemeService? themeService = null)
+        IAppSettingsService settingsService,
+        IThemeService? themeService = null,
+        ISpeechSynthesisService? speechService = null,
+        IAudioDeviceMonitor? deviceMonitor = null)
     {
         _settingsService = settingsService;
         _themeService = themeService;
+        _speechService = speechService;
+        _deviceMonitor = deviceMonitor;
         _appVersion = GetAppVersion();
+
+        if (_deviceMonitor != null)
+        {
+            _deviceMonitor.DeviceStatusChanged += (s, e) =>
+            {
+                UpdateMicrophoneStatus(e.Health, e.DeviceName);
+            };
+        }
+
         LoadSettings();
+    }
+
+    private void UpdateMicrophoneStatus(AudioCaptureHealth health, string? deviceName)
+    {
+        MicrophoneStatusText = health switch
+        {
+            AudioCaptureHealth.Healthy => $"Active: {deviceName ?? "Default Microphone"}",
+            AudioCaptureHealth.PermissionDenied => "Access Denied by Windows Privacy Settings",
+            AudioCaptureHealth.NoMicrophoneDetected => "No microphone detected",
+            AudioCaptureHealth.DeviceBusy => "Microphone in use by another app",
+            _ => "Voice input unavailable"
+        };
     }
 
     private void LoadSettings()
@@ -61,6 +100,27 @@ public sealed partial class SettingsViewModel : ObservableObject
         DownloadDirectory = _settingsService.DownloadDirectory;
         Argon2MemoryMb = _settingsService.Argon2MemoryMb > 0 ? _settingsService.Argon2MemoryMb : 64;
         Argon2Iterations = _settingsService.Argon2Iterations > 0 ? _settingsService.Argon2Iterations : 3;
+
+        SelectedVoiceId = _settingsService.SelectedVoiceId;
+        SpeechRate = _settingsService.SpeechRate;
+        SpeechPitch = _settingsService.SpeechPitch;
+        IsVoiceNavigationEnabled = _settingsService.IsVoiceNavigationEnabled;
+        IsAutoPunctuationEnabled = _settingsService.IsAutoPunctuationEnabled;
+
+        if (_speechService != null)
+        {
+            AvailableVoices = _speechService.AvailableVoices;
+            if (string.IsNullOrEmpty(SelectedVoiceId) && _speechService.CurrentVoice != null)
+            {
+                SelectedVoiceId = _speechService.CurrentVoice.Id;
+            }
+        }
+
+        if (_deviceMonitor != null)
+        {
+            UpdateMicrophoneStatus(_deviceMonitor.CurrentHealth, _deviceMonitor.DefaultCaptureDeviceName);
+        }
+
         _isLoading = false;
         IsDirty = false;
     }
@@ -95,6 +155,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnArgon2MemoryMbChanged(int value) { if (!_isLoading) IsDirty = true; }
     partial void OnArgon2IterationsChanged(int value) { if (!_isLoading) IsDirty = true; }
 
+    partial void OnSelectedVoiceIdChanged(string? value) { if (!_isLoading) IsDirty = true; }
+    partial void OnSpeechRateChanged(double value) { if (!_isLoading) IsDirty = true; }
+    partial void OnSpeechPitchChanged(double value) { if (!_isLoading) IsDirty = true; }
+    partial void OnIsVoiceNavigationEnabledChanged(bool value) { if (!_isLoading) IsDirty = true; }
+    partial void OnIsAutoPunctuationEnabledChanged(bool value) { if (!_isLoading) IsDirty = true; }
+
     [RelayCommand]
     public void SaveSettings()
     {
@@ -107,45 +173,69 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settingsService.DownloadDirectory = DownloadDirectory;
         _settingsService.Argon2MemoryMb = Argon2MemoryMb;
         _settingsService.Argon2Iterations = Argon2Iterations;
-        _settingsService.Save();
-        _themeService?.SetTheme(SelectedThemeIndex);
-        if (!string.IsNullOrWhiteSpace(AccentColor))
+
+        _settingsService.SelectedVoiceId = SelectedVoiceId;
+        _settingsService.SpeechRate = SpeechRate;
+        _settingsService.SpeechPitch = SpeechPitch;
+        _settingsService.IsVoiceNavigationEnabled = IsVoiceNavigationEnabled;
+        _settingsService.IsAutoPunctuationEnabled = IsAutoPunctuationEnabled;
+
+        if (!string.IsNullOrEmpty(SelectedVoiceId) && _speechService != null)
         {
-            _themeService?.SetAccentColor(AccentColor);
+            _speechService.SetVoice(SelectedVoiceId);
         }
-        SaveStatus = "Settings saved to %APPDATA%\\Axora\\settings.json";
-        IsDirty = false;
+
+        _settingsService.Save();
+
+        if (_settingsService.LastPersistenceError != null)
+        {
+            SaveStatus = $"Save failed: {_settingsService.LastPersistenceError.Message}";
+        }
+        else
+        {
+            SaveStatus = $"Preferences saved ({DateTime.Now:HH:mm:ss})";
+            IsDirty = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task TestSpeechAsync()
+    {
+        if (_speechService != null)
+        {
+            if (!string.IsNullOrEmpty(SelectedVoiceId))
+            {
+                _speechService.SetVoice(SelectedVoiceId);
+            }
+            await _speechService.SpeakTextAsync("Hello from Axora Desktop speech synthesis.", pitch: SpeechPitch, rate: SpeechRate);
+        }
     }
 
     [RelayCommand]
     public void RevertSettings()
     {
         LoadSettings();
-        _themeService?.SetTheme(SelectedThemeIndex);
-        if (!string.IsNullOrWhiteSpace(AccentColor))
-        {
-            _themeService?.SetAccentColor(AccentColor);
-        }
-        SaveStatus = "Changes reverted.";
+        SaveStatus = "Changes discarded.";
     }
 
     [RelayCommand]
-    public void ResetToDefaults()
+    public void ResetDefaults()
     {
         _settingsService.ResetToDefaults();
         LoadSettings();
-        _themeService?.SetTheme(SelectedThemeIndex);
-        if (!string.IsNullOrWhiteSpace(AccentColor))
-        {
-            _themeService?.SetAccentColor(AccentColor);
-        }
-        SaveStatus = "Reset to default preferences.";
-        IsDirty = false;
+        SaveStatus = "Settings reset to defaults.";
     }
 
     private static string GetAppVersion()
     {
-        var v = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
-        return v is null ? "1.0.0" : $"{v.Major}.{v.Minor}.{v.Build}";
+        try
+        {
+            var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            return version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "1.0.0";
+        }
+        catch
+        {
+            return "1.0.0";
+        }
     }
 }
