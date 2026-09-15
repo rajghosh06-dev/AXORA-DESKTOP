@@ -185,8 +185,11 @@ public sealed class StudyCitation
     public int ChunkIndex { get; set; }
     public string MatchedSnippet { get; set; } = string.Empty;
     public double SimilarityScore { get; set; }
+    public SourceAvailabilityStatus SourceStatus { get; set; } = SourceAvailabilityStatus.None;
 
-    public string FormattedBadge => $"{FileName} · p. {PageNumber}";
+    public string FormattedBadge => SourceStatus == SourceAvailabilityStatus.Missing
+        ? $"{FileName} (Source file moved) · p. {PageNumber}"
+        : $"{FileName} · p. {PageNumber}";
 }
 
 /// <summary>
@@ -210,6 +213,12 @@ public sealed partial class StudyConcept : ObservableObject
 
     public StudyCitation? Citation { get; set; }
 
+    public ItemGroundingStatus GroundingStatus { get; set; } = ItemGroundingStatus.Grounded;
+
+    public bool IsUserModified { get; set; }
+
+    public DateTime? LastModifiedAt { get; set; }
+
     public static StudyConcept FromItem(StudyConceptItem item, StudyCitation? citation = null) => new()
     {
         ConceptId = !string.IsNullOrWhiteSpace(item.ConceptId) ? item.ConceptId : Guid.NewGuid().ToString("N"),
@@ -217,7 +226,10 @@ public sealed partial class StudyConcept : ObservableObject
         Definition = item.Definition,
         Category = item.Category,
         BadgeColor = item.BadgeColor,
-        Citation = citation ?? item.Citation
+        Citation = citation ?? item.Citation,
+        GroundingStatus = item.GroundingStatus,
+        IsUserModified = item.IsUserModified,
+        LastModifiedAt = item.LastModifiedAt
     };
 
     public StudyConceptItem ToItem() => new()
@@ -227,7 +239,10 @@ public sealed partial class StudyConcept : ObservableObject
         Definition = Definition,
         Category = Category,
         BadgeColor = BadgeColor,
-        Citation = Citation
+        Citation = Citation,
+        GroundingStatus = GroundingStatus,
+        IsUserModified = IsUserModified,
+        LastModifiedAt = LastModifiedAt
     };
 }
 
@@ -243,6 +258,9 @@ public sealed class StudyConceptItem
     public string Category { get; set; } = "Core Concept";
     public string BadgeColor { get; set; } = "#5B7DE8";
     public StudyCitation? Citation { get; set; }
+    public ItemGroundingStatus GroundingStatus { get; set; } = ItemGroundingStatus.Grounded;
+    public bool IsUserModified { get; set; }
+    public DateTime? LastModifiedAt { get; set; }
 }
 
 /// <summary>
@@ -269,6 +287,12 @@ public sealed partial class PracticeQuizItem : ObservableObject
 
     public StudyCitation? Citation { get; set; }
 
+    public ItemGroundingStatus GroundingStatus { get; set; } = ItemGroundingStatus.Grounded;
+
+    public bool IsUserModified { get; set; }
+
+    public DateTime? LastModifiedAt { get; set; }
+
     // Compatibility aliases for UI binding & StudyQuestionItem parity
     public int Number { get => QuestionNumber; set => QuestionNumber = value; }
     public string Question { get => QuestionText; set => QuestionText = value; }
@@ -283,7 +307,10 @@ public sealed partial class PracticeQuizItem : ObservableObject
         ExpectedAnswer = item.Answer,
         Difficulty = item.Difficulty,
         IsAnswerRevealed = item.IsAnswerVisible,
-        Citation = citation ?? item.Citation
+        Citation = citation ?? item.Citation,
+        GroundingStatus = item.GroundingStatus,
+        IsUserModified = item.IsUserModified,
+        LastModifiedAt = item.LastModifiedAt
     };
 
     public StudyQuestionItem ToItem() => new()
@@ -294,7 +321,10 @@ public sealed partial class PracticeQuizItem : ObservableObject
         Answer = ExpectedAnswer,
         Difficulty = Difficulty,
         IsAnswerVisible = IsAnswerRevealed,
-        Citation = Citation
+        Citation = Citation,
+        GroundingStatus = GroundingStatus,
+        IsUserModified = IsUserModified,
+        LastModifiedAt = LastModifiedAt
     };
 }
 
@@ -310,6 +340,9 @@ public sealed partial class StudyQuestionItem : ObservableObject
     public string Answer { get; set; } = string.Empty;
     public string Difficulty { get; set; } = "Medium";
     public StudyCitation? Citation { get; set; }
+    public ItemGroundingStatus GroundingStatus { get; set; } = ItemGroundingStatus.Grounded;
+    public bool IsUserModified { get; set; }
+    public DateTime? LastModifiedAt { get; set; }
 
     [ObservableProperty]
     private bool _isAnswerVisible;

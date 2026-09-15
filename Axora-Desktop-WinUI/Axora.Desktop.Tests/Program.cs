@@ -23,7 +23,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Axora.Desktop.Tests;
 
-public class Program
+public partial class Program
 {
     private static int _passedTests = 0;
     private static int _failedTests = 0;
@@ -138,6 +138,9 @@ public class Program
 
             // Phase W3-E Tests: Search / Retrieval Integration Stage
             await RunW3_ESearchServiceTests();
+
+            // Phase W3-F Tests: Study Synthesis Engine Stage
+            await RunW3_FStudySynthesisEngineTests();
         }
         catch (Exception ex)
         {

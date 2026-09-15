@@ -148,6 +148,10 @@ public sealed partial class App : Application
                 // ── Scholar Search & Retrieval Services (Phase W3-E) ───────────────
                 services.AddSingleton<IScholarSearchService, ScholarSearchService>();
 
+                // ── Scholar Study Synthesis Services (Phase W3-F) ─────────────────
+                services.AddSingleton<IScholarSlmModelDriver, NullScholarSlmModelDriver>();
+                services.AddSingleton<IScholarSynthesisEngine, ScholarSynthesisEngine>();
+
                 // ── Extension & Dependency Manager Services (Phase W1.5) ──────────
                 services.AddSingleton<IExtensionCacheService, ExtensionCacheService>();
                 services.AddSingleton<IExtensionRegistry, ExtensionRegistry>();

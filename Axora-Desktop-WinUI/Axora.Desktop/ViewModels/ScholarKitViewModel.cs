@@ -34,6 +34,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     private readonly IScannerService _scannerService;
     private readonly IAppSettingsService _settings;
     private readonly IScholarLibraryService? _scholarLibrary;
+    private readonly IScholarSynthesisEngine? _synthesisEngine;
     private readonly DispatcherQueue? _dispatcher;
     private DateTime _currentSessionCreatedAt = DateTime.UtcNow;
     private bool _isSuppressingChangeTracking;
@@ -52,7 +53,8 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         ISpeechSynthesisService speechService,
         IScannerService scannerService,
         IAppSettingsService settings,
-        IScholarLibraryService? scholarLibrary = null)
+        IScholarLibraryService? scholarLibrary = null,
+        IScholarSynthesisEngine? synthesisEngine = null)
     {
         _ocrService = ocrService;
         _pdfService = pdfService;
@@ -63,6 +65,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         _scannerService = scannerService;
         _settings = settings;
         _scholarLibrary = scholarLibrary;
+        _synthesisEngine = synthesisEngine;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
         // Partial properties cannot have initializers (CS8050) — set defaults in constructor
@@ -526,7 +529,30 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
 
         try
         {
-            await Task.Delay(400); // UI responsiveness
+            if (_synthesisEngine != null && (!string.IsNullOrWhiteSpace(CurrentDocumentId) || !string.IsNullOrWhiteSpace(CurrentSessionId)))
+            {
+                var scope = !string.IsNullOrWhiteSpace(CurrentDocumentId)
+                    ? SearchScope.Single(CurrentDocumentId)
+                    : SearchScope.Session(CurrentSessionId);
+
+                var req = new StudySynthesisRequest
+                {
+                    Scope = scope,
+                    PersistenceMode = SynthesisPersistenceMode.PreviewOnly_DoNotSave
+                };
+
+                var res = await _synthesisEngine.GenerateSummaryAsync(req);
+                if (!string.IsNullOrWhiteSpace(res.FormattedMarkdown) && res.DegradationStatus != SynthesisDegradationStatus.ZeroResults_NoEvidence)
+                {
+                    ExecutiveSummary = res.FormattedMarkdown;
+                    HasGeneratedSummary = true;
+                    StatusMessage = $"Executive summary generated successfully ({res.KeyPoints.Count} points).";
+                    SelectedStudioTabIndex = 2;
+                    return;
+                }
+            }
+
+            await Task.Delay(200); // UI responsiveness
 
             var sentences = OcrResultText
                 .Split(new[] { ". ", ".\n", "!\n", "?\n" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -571,7 +597,33 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
 
         try
         {
-            await Task.Delay(300);
+            if (_synthesisEngine != null && (!string.IsNullOrWhiteSpace(CurrentDocumentId) || !string.IsNullOrWhiteSpace(CurrentSessionId)))
+            {
+                var scope = !string.IsNullOrWhiteSpace(CurrentDocumentId)
+                    ? SearchScope.Single(CurrentDocumentId)
+                    : SearchScope.Session(CurrentSessionId);
+
+                var req = new StudySynthesisRequest
+                {
+                    Scope = scope,
+                    TargetItemCount = 6,
+                    PersistenceMode = SynthesisPersistenceMode.PreviewOnly_DoNotSave
+                };
+
+                var res = await _synthesisEngine.ExtractConceptsAsync(req);
+                if (res.Concepts.Count > 0)
+                {
+                    foreach (var c in res.Concepts)
+                    {
+                        ExtractedConcepts.Add(c.ToItem());
+                    }
+                    StatusMessage = $"Extracted {ExtractedConcepts.Count} study concepts.";
+                    SelectedStudioTabIndex = 2;
+                    return;
+                }
+            }
+
+            await Task.Delay(200);
 
             var paragraphs = OcrResultText.Split(new[] { "\n\n", "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries);
             var colorPalette = new[] { "#5B7DE8", "#7C4DFF", "#00B0FF", "#00C853", "#FF9100" };
@@ -636,7 +688,33 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
 
         try
         {
-            await Task.Delay(350);
+            if (_synthesisEngine != null && (!string.IsNullOrWhiteSpace(CurrentDocumentId) || !string.IsNullOrWhiteSpace(CurrentSessionId)))
+            {
+                var scope = !string.IsNullOrWhiteSpace(CurrentDocumentId)
+                    ? SearchScope.Single(CurrentDocumentId)
+                    : SearchScope.Session(CurrentSessionId);
+
+                var req = new StudySynthesisRequest
+                {
+                    Scope = scope,
+                    TargetItemCount = 5,
+                    PersistenceMode = SynthesisPersistenceMode.PreviewOnly_DoNotSave
+                };
+
+                var res = await _synthesisEngine.GenerateQuizAsync(req);
+                if (res.Questions.Count > 0)
+                {
+                    foreach (var q in res.Questions)
+                    {
+                        PracticeQuizQuestions.Add(q.ToItem());
+                    }
+                    StatusMessage = $"Generated {PracticeQuizQuestions.Count} study questions.";
+                    SelectedStudioTabIndex = 2;
+                    return;
+                }
+            }
+
+            await Task.Delay(200);
 
             var sentences = OcrResultText
                 .Split(new[] { ". ", ".\n", "!\n", "?\n" }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
