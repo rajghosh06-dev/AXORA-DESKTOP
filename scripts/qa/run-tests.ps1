@@ -24,7 +24,7 @@ $TotalSkipped = 0
 
 # 1. Run WinUI Tests
 if ($Target -eq 'WinUI' -or $Target -eq 'All') {
-    Write-Host "`n[1] Running WinUI 3 Adversarial Stress Test Suite..." -ForegroundColor Yellow
+    Write-Host "`n[1] Running bounded WinUI 3 test manifest..." -ForegroundColor Yellow
     $candidates = @(
         (Join-Path $WorkspaceRoot "Axora-Desktop-WinUI\Axora.Desktop.Tests\bin\x64\Debug\net9.0-windows10.0.26100.0\win-x64\Axora.Desktop.Tests.exe"),
         (Join-Path $WorkspaceRoot "Axora-Desktop-WinUI\Axora.Desktop.Tests\bin\Debug\net9.0-windows10.0.26100.0\win-x64\Axora.Desktop.Tests.exe")
@@ -36,44 +36,31 @@ if ($Target -eq 'WinUI' -or $Target -eq 'All') {
 
     if (-not $TestExe) {
         Write-Host "Test runner executable not found. Attempting build first..." -ForegroundColor Gray
-        & (Join-Path $ScriptRoot "build-all.ps1") -Target WinUI
+        # Direct builds avoid pre-build-clean.ps1, which terminates unrelated Axora processes.
+        $appProject = Join-Path $WorkspaceRoot 'Axora-Desktop-WinUI\Axora.Desktop\Axora.Desktop.csproj'
+        $testProject = Join-Path $WorkspaceRoot 'Axora-Desktop-WinUI\Axora.Desktop.Tests\Axora.Desktop.Tests.csproj'
+        dotnet build $appProject -p:Configuration=Debug -p:Platform=x64 -v:minimal
+        if ($LASTEXITCODE -ne 0) { Write-Host '[FAIL] WinUI application build failed.' -ForegroundColor Red; $TotalFailed += 1 }
+        if ($LASTEXITCODE -eq 0) {
+            dotnet build $testProject -p:Configuration=Debug -p:Platform=x64 -v:minimal
+            if ($LASTEXITCODE -ne 0) { Write-Host '[FAIL] WinUI test build failed.' -ForegroundColor Red; $TotalFailed += 1 }
+        }
         foreach ($cand in $candidates) {
             if (Test-Path $cand) { $TestExe = $cand; break }
         }
     }
 
-    if ($TestExe -and (Test-Path $TestExe)) {
-        $output = & $TestExe 2>&1
-        $output | ForEach-Object { Write-Host "  $_" }
-
-        $summaryMatched = $false
-        foreach ($line in $output) {
-            if ($line -match "Total:\s*(\d+)\s*\|\s*Passed:\s*(\d+)\s*\|\s*Failed:\s*(\d+)") {
-                $passed = [int]$matches[2]
-                $failed = [int]$matches[3]
-                $TotalPassed += $passed
-                $TotalFailed += $failed
-                $summaryMatched = $true
-                break
-            }
-        }
-
-        if (-not $summaryMatched) {
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "[PASS] Test executable completed with exit code 0." -ForegroundColor Green
-                $TotalPassed += 1
-            } else {
-                Write-Host "[FAIL] Test executable exited with code $LASTEXITCODE." -ForegroundColor Red
-                $TotalFailed += 1
-            }
-        } elseif ($LASTEXITCODE -eq 0 -and $failed -eq 0) {
-            Write-Host "[PASS] WinUI Stress Suite ($passed/$passed assertions passed)." -ForegroundColor Green
+    if ($TestExe -and (Test-Path $TestExe) -and $TotalFailed -eq 0) {
+        & (Join-Path $ScriptRoot 'run-winui-bounded.ps1')
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host '[PASS] WinUI test manifest completed with an explicit ledger.' -ForegroundColor Green
+            $TotalPassed += 1
         } else {
-            Write-Host "[FAIL] WinUI Stress Suite encountered $failed failure(s)." -ForegroundColor Red
+            Write-Host "[FAIL] Bounded WinUI suite exited with code $LASTEXITCODE." -ForegroundColor Red
+            $TotalFailed += 1
         }
     } else {
-        Write-Host "[ERROR] Could not build or find test executable." -ForegroundColor Red
-        $TotalFailed += 1
+        if ($TotalFailed -eq 0) { Write-Host "[ERROR] Could not build or find test executable." -ForegroundColor Red; $TotalFailed += 1 }
     }
 }
 

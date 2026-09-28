@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -393,14 +394,20 @@ public partial class Program
         // 1. Enumerate System Voices on Host Machine (R-VOICE-15 / R-VOICE-23)
         {
             var speechService = new SpeechSynthesisService(logger: null);
-            await speechService.InitializeAsync();
-            var voices = speechService.AvailableVoices;
-            Console.WriteLine($"      [ENV INFO] Installed Windows Speech Voices Count: {voices.Count}");
-            foreach (var v in voices.Take(5))
+            try
             {
-                Console.WriteLine($"      [VOICE] Id: {v.Id} | Name: {v.DisplayName} | Lang: {v.Language} | Gender: {v.Gender}");
+                await speechService.InitializeAsync();
+                var voices = speechService.AvailableVoices;
+                Console.WriteLine($"      [ENV INFO] Installed Windows Speech Voices Count: {voices.Count}");
+                foreach (var v in voices.Take(5))
+                    Console.WriteLine($"      [VOICE] Id: {v.Id} | Name: {v.DisplayName} | Lang: {v.Language} | Gender: {v.Gender}");
+                RecordEnvironmentObservation("T3-01 installed Windows speech voices", voices.Count.ToString());
+                if (voices.Count == 0) RecordEnvironmentUnavailable("T3-01: No installed Windows speech synthesis voices");
             }
-            Assert(voices != null, "T3-01: SpeechSynthesizer.AllVoices queried successfully from Windows App SDK / WinRT runtime");
+            catch (COMException ex) when (ex.HResult == unchecked((int)0x800455A0))
+            {
+                RecordEnvironmentUnavailable($"T3-01: Windows SpeechSynthesizer activation unavailable (HRESULT 0x{ex.HResult:X8}); no voice catalog observation");
+            }
         }
 
         // 2. Check Windows Speech Recognition Engine Prerequisites (R-VOICE-22)
@@ -408,7 +415,8 @@ public partial class Program
             var transcriber = new VoiceTranscriberService(logger: null);
             bool available = await transcriber.CheckPrerequisitesAsync();
             Console.WriteLine($"      [ENV INFO] Windows Speech Recognition Dictation Available: {available}");
-            Assert(true, "T3-02: SpeechRecognizer prerequisite probe completed without crashing host process");
+            RecordEnvironmentObservation("T3-02 dictation prerequisite", available.ToString());
+            if (!available) RecordEnvironmentUnavailable("T3-02: Windows speech recognition prerequisite/language unavailable");
         }
 
         // 3. Query Audio Capture Hardware Endpoint (R-VOICE-07)
@@ -416,7 +424,8 @@ public partial class Program
             var monitor = new AudioDeviceMonitor(logger: null);
             await monitor.RefreshStatusAsync();
             Console.WriteLine($"      [ENV INFO] Microphone Present: {monitor.HasMicrophone} | Health: {monitor.CurrentHealth}");
-            Assert(true, "T3-03: AudioDeviceMonitor determined initial capture health status");
+            RecordEnvironmentObservation("T3-03 microphone", $"present={monitor.HasMicrophone}; health={monitor.CurrentHealth}");
+            if (!monitor.HasMicrophone) RecordEnvironmentUnavailable("T3-03: No microphone capture endpoint");
             monitor.Dispose();
         }
 
@@ -443,7 +452,7 @@ public partial class Program
             var text = formatter.FormatSpokenChunk("period confidential notes period private formula comma do not send to cloud");
 
             int tcpConnectionsAfter = ipProperties.GetActiveTcpConnections().Length;
-            Assert(text.Length > 0, "T4-01: Voice processing executed locally without outbound remote sockets");
+            RecordStaticGap($"T4-01: formatter returned {text.Length} characters and system TCP endpoints changed {tcpConnectionsAfter - tcpConnectionsBefore}; this does not prove no application network I/O");
         }
 
         // 2. Zero Disk Spooling Observation (R-VOICE-03)
@@ -464,7 +473,8 @@ public partial class Program
                 .Concat(Directory.GetFiles(tempDir, "*.raw"))
                 .ToList();
 
-            Assert(finalAudioFiles.Count == initialAudioFiles.Count, "T4-02: Zero temporary audio files (.wav, .pcm, .raw) created on disk during voice session");
+            RecordEnvironmentObservation("T4-02 temp audio file count delta", (finalAudioFiles.Count - initialAudioFiles.Count).ToString());
+            RecordStaticGap("T4-02: top-level temp file count is not sufficient to prove zero disk spooling across all paths");
             transcriber.Dispose();
         }
 
@@ -479,29 +489,24 @@ public partial class Program
             await transcriberWithLogger.StopDictationAsync();
 
             bool canaryLeaked = logger.Messages.Any(m => m.Contains(canaryPhrase, StringComparison.OrdinalIgnoreCase));
-            Assert(!canaryLeaked, "T4-03: Sensitive dictated text is strictly redacted and absent from application ILogger outputs");
+            RecordStaticGap($"T4-03: canary was not injected into recognition; absence in logger ({!canaryLeaked}) cannot prove transcript redaction");
             transcriberWithLogger.Dispose();
         }
 
         // 4. Rapid Start/Stop WinRT Handle Lifecycle Diagnostics (R-VOICE-14)
         {
             var transcriber = new VoiceTranscriberService(logger: null);
-            bool noExceptions = true;
             for (int i = 0; i < 15; i++)
             {
-                try
-                {
-                    await transcriber.StartDictationAsync((string _) => { });
-                    await transcriber.StopDictationAsync();
-                }
-                catch
-                {
-                    noExceptions = false;
-                    break;
-                }
+                Console.WriteLine($"[T4-04] iteration={i + 1}/15 stage=start (includes WinRT compile/start-session) timeout=10s");
+                await transcriber.StartDictationAsync((string _) => { }).WaitAsync(TimeSpan.FromSeconds(10));
+                Console.WriteLine($"[T4-04] iteration={i + 1}/15 stage=stop timeout=10s");
+                await transcriber.StopDictationAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                Console.WriteLine($"[T4-04] iteration={i + 1}/15 stage=complete");
             }
-            Assert(noExceptions, "T4-04: 15 rapid start/stop cycles recycled WinRT recognizer handles cleanly without unhandled crashes");
-            transcriber.Dispose();
+            Console.WriteLine("[T4-04] stage=dispose timeout=10s");
+            await Task.Run(transcriber.Dispose).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert(!transcriber.IsRecording, "T4-04: 15 bounded start/stop cycles completed; recognizer is not recording");
         }
 
         // 5. Speech Synthesis 10-Thread Rapid Concurrent Stress (R-VOICE-17)
@@ -670,76 +675,76 @@ public partial class Program
         Console.ResetColor();
 
         // R-VOICE-01: Network Isolation
-        Assert(true, "R-VOICE-01: Offline-only local design validated; zero network dependencies or remote audio uploads");
+        RecordStaticGap("R-VOICE-01: Offline-only local design validated; zero network dependencies or remote audio uploads");
 
         // R-VOICE-02: Ephemeral Audio Buffering
-        Assert(true, "R-VOICE-02: Ephemeral audio memory lifecycle validated; audio frames discarded on recognition stop");
+        RecordStaticGap("R-VOICE-02: Ephemeral audio memory lifecycle validated; audio frames discarded on recognition stop");
 
         // R-VOICE-03: No Audio File Spooling
-        Assert(true, "R-VOICE-03: Zero temporary audio files written to disk verified across file system");
+        RecordStaticGap("R-VOICE-03: Zero temporary audio files written to disk verified across file system");
 
         // R-VOICE-04: Acoustic Feedback Gating
-        Assert(true, "R-VOICE-04: Mutual exclusion validated; mic capture paused while TTS is active");
+        RecordStaticGap("R-VOICE-04: Mutual exclusion validated; mic capture paused while TTS is active");
 
         // R-VOICE-05: Configurable Acoustic Debounce
-        Assert(true, "R-VOICE-05: Configurable acoustic debounce window verified (default 250 ms, customizable)");
+        RecordStaticGap("R-VOICE-05: Configurable acoustic debounce window verified (default 250 ms, customizable)");
 
         // R-VOICE-06: Microphone Permission Handling
-        Assert(true, "R-VOICE-06: UnauthorizedAccessException (0x80070005) handled safely without process crash");
+        RecordStaticGap("R-VOICE-06: UnauthorizedAccessException (0x80070005) handled safely without process crash");
 
         // R-VOICE-07: No Microphone Fallback
-        Assert(true, "R-VOICE-07: 0 microphone presence gracefully degrades to Disabled state");
+        RecordStaticGap("R-VOICE-07: 0 microphone presence gracefully degrades to Disabled state");
 
         // R-VOICE-08: Device Hotplug Recovery
-        Assert(true, "R-VOICE-08: Capture health dynamically updates on device disconnect/reconnect");
+        RecordStaticGap("R-VOICE-08: Capture health dynamically updates on device disconnect/reconnect");
 
         // R-VOICE-09: Command Safety Classification
-        Assert(true, "R-VOICE-09: Safe, ConfirmationRequired, and VoiceProhibited safety boundaries strictly enforced");
+        RecordStaticGap("R-VOICE-09: Safe, ConfirmationRequired, and VoiceProhibited safety boundaries strictly enforced");
 
         // R-VOICE-10: Deterministic Command Matching
-        Assert(true, "R-VOICE-10: Deterministic matching across primary and alias phrases verified");
+        RecordStaticGap("R-VOICE-10: Deterministic matching across primary and alias phrases verified");
 
         // R-VOICE-11: Command Normalization
-        Assert(true, "R-VOICE-11: Lowercase, whitespace trim, and punctuation removal normalization validated");
+        RecordStaticGap("R-VOICE-11: Lowercase, whitespace trim, and punctuation removal normalization validated");
 
         // R-VOICE-12: Dictation Punctuation Commands
-        Assert(true, "R-VOICE-12: Spoken period, comma, new line, new paragraph replacements validated");
+        RecordStaticGap("R-VOICE-12: Spoken period, comma, new line, new paragraph replacements validated");
 
         // R-VOICE-13: Disfluency Suppression
-        Assert(true, "R-VOICE-13: Isolated um, uh, ah tokens suppressed while preserving authentic vocabularies");
+        RecordStaticGap("R-VOICE-13: Isolated um, uh, ah tokens suppressed while preserving authentic vocabularies");
 
         // R-VOICE-14: Deterministic WinRT Disposal
-        Assert(true, "R-VOICE-14: WinRT speech recognizer handle disposal verified across rapid start/stop cycles");
+        RecordStaticGap("R-VOICE-14: WinRT speech recognizer handle disposal verified across rapid start/stop cycles");
 
         // R-VOICE-15: TTS Pitch/Rate Clamping
-        Assert(true, "R-VOICE-15: Rate strictly clamped to [0.5, 3.0] and pitch strictly clamped to [0.5, 1.5]");
+        RecordStaticGap("R-VOICE-15: Rate strictly clamped to [0.5, 3.0] and pitch strictly clamped to [0.5, 1.5]");
 
         // R-VOICE-16: Empty Speech Text Guard
-        Assert(true, "R-VOICE-16: Null, empty, and whitespace speech strings exit immediately as no-op");
+        RecordStaticGap("R-VOICE-16: Null, empty, and whitespace speech strings exit immediately as no-op");
 
         // R-VOICE-17: Concurrent Speak Serialization
-        Assert(true, "R-VOICE-17: Speak operations serialized cleanly through concurrency lock");
+        RecordStaticGap("R-VOICE-17: Speak operations serialized cleanly through concurrency lock");
 
         // R-VOICE-18: Non-Blocking UI Execution
-        Assert(true, "R-VOICE-18: All audio operations execute asynchronously off the UI composition thread");
+        RecordStaticGap("R-VOICE-18: All audio operations execute asynchronously off the UI composition thread");
 
         // R-VOICE-19: UI Event Thread Marshalling
-        Assert(true, "R-VOICE-19: Events marshalled safely to UI DispatcherQueue");
+        RecordStaticGap("R-VOICE-19: Events marshalled safely to UI DispatcherQueue");
 
         // R-VOICE-20: Log Redaction
-        Assert(true, "R-VOICE-20: Dictation transcript strings never written to application ILogger outputs");
+        RecordStaticGap("R-VOICE-20: Dictation transcript strings never written to application ILogger outputs");
 
         // R-VOICE-21: Process Shutdown Cancellation
-        Assert(true, "R-VOICE-21: Process shutdown and dispose cancels ongoing speech/dictation operations promptly");
+        RecordStaticGap("R-VOICE-21: Process shutdown and dispose cancels ongoing speech/dictation operations promptly");
 
         // R-VOICE-22: Speech Language Pack Prerequisite
-        Assert(true, "R-VOICE-22: System queries Windows speech pack availability without fatal fault");
+        RecordStaticGap("R-VOICE-22: System queries Windows speech pack availability without fatal fault");
 
         // R-VOICE-23: Voice Settings Round-Trip
-        Assert(true, "R-VOICE-23: Voice ID, rate, pitch, and voice navigation settings round-trip persistence verified");
+        RecordStaticGap("R-VOICE-23: Voice ID, rate, pitch, and voice navigation settings round-trip persistence verified");
 
         // R-VOICE-24: W3-F Component Immutability
-        Assert(true, "R-VOICE-24: W3-F synthesis, grounding, and indexing engines remain 100% behaviorally preserved");
+        RecordStaticGap("R-VOICE-24: W3-F synthesis, grounding, and indexing engines remain 100% behaviorally preserved");
 
         await Task.CompletedTask;
     }

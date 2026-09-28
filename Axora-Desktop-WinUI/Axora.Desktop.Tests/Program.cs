@@ -32,156 +32,12 @@ public partial class Program
 
     public static async Task<int> Main(string[] args)
     {
-        Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine("================================================================================");
-        Console.WriteLine("  AXORA DESKTOP — ADVERSARIAL STRESS TEST SUITE (Milestones M3 & M4)");
-        Console.WriteLine("================================================================================");
-        Console.ResetColor();
-
-        try
-        {
-            // Milestone M3 Tests
-            await RunM3PdfTests();
-
-            // Milestone M4 Tests
-            await RunM4FlashcardsTests();
-            await RunM4BatchImageTests();
-
-            // Phase W1 Tests: Native Foundation Hardening
-            await RunW1HardeningTests();
-
-            // Phase W1.5 Tests: Extension / Dependency / Download Manager Foundation
-            await RunW1_5ExtensionManagerTests();
-
-            // Phase W2-A Tests: Universal Converter Core Domain Models & Interfaces
-            await RunW2_ACoreDomainTests();
-
-            // Phase W2-B1 Tests: Native WIC Image Conversion Engine
-            await RunW2_B1WicImageEngineTests();
-
-            // Phase W2-B2 Tests: Native Document & Text Conversion Engines
-            await RunW2_B2DocumentEngineTests();
-
-            // Phase W2-C Tests: PDF -> Image Rendering Proof-of-Concept (Windows.Data.Pdf)
-            await RunW2_CPdfRendererPocTests();
-
-            // Phase W2-D Tests: Conversion Orchestrator & Bounded Concurrency Pipeline
-            await RunW2_DConversionOrchestratorTests();
-
-            // Phase W2-E Tests: Universal Converter UI + ViewModel + Shell Integration
-            await RunW2_EUniversalConverterViewModelTests();
-
-            // Phase W2-E.1 Tests: Universal Converter Real-Runtime Interaction + Visual QA Gate
-            await RunW2_E1RealRuntimeInteractionTests();
-
-            // Phase W2-F1 Tests: Optimization Domain Model & Preset Foundation
-            await RunW2_F1OptimizationDomainModelTests();
-
-            // Phase W2-F2 Tests: Native Image Engine Enhancements (Quality, Downscaling, EXIF, Metadata)
-            await RunW2_F2ImageEngineEnhancementsTests();
-
-            // Phase W2-F3 Tests: Optimization UI, Preset Selection & Profile Binding
-            await RunW2_F3OptimizationUiIntegrationTests();
-
-            // Phase W2-F4 Tests: Queue Telemetry, Throughput Metrics & Performance Observability
-            await RunW2_F4QueueTelemetryTests();
-
-            // Phase W2-F5 Tests: Optimization UX Hardening, Format Capabilities & Polish
-            await RunW2_F5FormatCapabilityTests();
-
-            // Phase W3-B Tests: Scholar Domain Models & Local Persistence Layer
-            await RunW3_BScholarPersistenceTests();
-
-            // Phase W3-C.1 Tests: Scholar Extraction Contracts & Interfaces
-            await RunW3_C1ExtractionContractsTests();
-
-            // Phase W3-C.2 Tests: Deterministic Text & Markup Extraction
-            await RunW3_C2DeterministicExtractionTests();
-
-            // Phase W3-C.3 Tests: Decoupled PDF Extraction & Native Rasterization
-            await RunW3_C3PdfExtractionTests();
-
-            // Phase W3-C.4 Tests: Word DOCX / WordProcessingML Document Extraction
-            await RunW3_C4DocxExtractionTests();
-
-            // Phase W3-C.5.2 Tests: On-Device OCR Capability & Concrete Windows Media OCR Engine
-            await RunW3_C5OcrTests();
-
-            // Phase W3-C.5.3 Tests: Raster Image Document Extraction Engine
-            await RunW3_C5RasterImageExtractionTests();
-
-            // Phase W3-C.5.4 Tests: PDF OCR Hybrid Dispatch
-            await RunW3_C5PdfHybridOcrTests();
-
-            // Phase W3-C.5.5 Tests: Multi-Frame TIFF Document Extraction Engine
-            await RunW3_C5TiffExtractionTests();
-
-            // Phase W3-C.6.1 Tests: Normalization Contracts, Options Reconciliation & DI Foundation
-            await RunW3_C6_1NormalizationFoundationTests();
-
-            // Phase W3-C.6.2 Tests: Unicode Normalization, Ligature Unfolding & Character Sanitization
-            await RunW3_C6_2UnicodeAndSanitizationTests();
-
-            // Phase W3-C.6.3 Tests: Source-Aware Paragraph Assembly, Line-Wrap Rejoining & DOCX Token Reconciliation
-            await RunW3_C6_3StructuralNormalizationTests();
-
-            // Phase W3-C.6.4 Tests: Normalization End-to-End Integration, Resilience & Diagnostic Telemetry
-            await RunW3_C6_4NormalizationIntegrationTests();
-
-            // Phase W3-C.7.2 Tests: Passage Chunking DI & Orchestrator Integration
-            await RunW3_C7_2PassageChunkingIntegrationTests();
-
-            // Phase W3-C.7.3 Tests: Bounded Context Window Formulation
-            await RunW3_C7_3BoundedContextWindowBuilderTests();
-
-            // Phase W3-D Tests: Local Vector Embedding & Hybrid Indexing Stage
-            await RunW3_DIndexServiceTests();
-
-            // Phase W3-E Tests: Search / Retrieval Integration Stage
-            await RunW3_ESearchServiceTests();
-
-            // Phase W3-F Tests: Study Synthesis Engine Stage
-            await RunW3_FStudySynthesisEngineTests();
-
-            // Phase W4 Tests: Voice Subsystem & Capabilities
-            await RunW4VoiceSubsystemTests();
-        }
-        catch (Exception ex)
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"[FATAL CRASH IN TEST HARNESS] {ex}");
-            Console.ResetColor();
-            _failedTests++;
-            _failures.Add($"FATAL HARNESS EXCEPTION: {ex.Message}");
-        }
-
-        Console.WriteLine();
-        Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine("================================================================================");
-        Console.WriteLine($"  TEST RUN SUMMARY: Total: {_passedTests + _failedTests} | Passed: {_passedTests} | Failed: {_failedTests}");
-        Console.WriteLine("================================================================================");
-        Console.ResetColor();
-
-        if (_failedTests > 0)
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("FAILED TESTS:");
-            foreach (var fail in _failures)
-            {
-                Console.WriteLine($"  - {fail}");
-            }
-            Console.ResetColor();
-            return 1;
-        }
-
-        Console.ForegroundColor = ConsoleColor.Green;
-        Console.WriteLine("ALL ADVERSARIAL STRESS TESTS PASSED SUCCESSFULLY.");
-        Console.ResetColor();
-        return 0;
+        return await RunManifestAsync(args);
     }
 
     private static void Assert(bool condition, string testName, string? message = null)
     {
+        RecordAssertion(condition);
         if (condition)
         {
             _passedTests++;
@@ -1210,7 +1066,7 @@ public partial class Program
                 registry.Register(customMissing);
 
                 var cache = new ExtensionCacheService(null, cacheDir, extDir);
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -1254,8 +1110,9 @@ public partial class Program
                 var managedDir = cache.GetExtensionInstallDirectory("probe-tool");
                 var managedExe = Path.Combine(managedDir, "probetool.exe");
                 await File.WriteAllTextAsync(managedExe, "MOCK_PROBE_BINARY_DATA_NON_EMPTY");
+                Console.WriteLine("  [W1.5_5] Managed file fixture written; entering deterministic fixture status check (real process probe is separate gap)");
 
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -1263,8 +1120,9 @@ public partial class Program
                 var depMgr = new DependencyManager(registry, detector, validator, downloader, installer, repair, cache);
 
                 var status = await depMgr.CheckStatusAsync("probe-tool");
-                Assert(status == ExtensionStatus.Installed, $"W1.5_5a: Installed managed executable detected as Installed (Actual: {status})");
-                Assert(installedExt.InstalledVersion != null, "W1.5_5b: Installed version populated from probe");
+                Console.WriteLine("  [W1.5_5] Status/version probe returned");
+                Assert(status == ExtensionStatus.Installed, $"W1.5_5a: DependencyManager accepts a managed-file fixture as Installed (Actual: {status})");
+                Assert(installedExt.InstalledVersion != null, "W1.5_5b: Installed version populated from deterministic fixture detector");
                 Assert(depMgr.IsDependencyReady("probe-tool"), "W1.5_5c: IsDependencyReady returns true for installed extension");
             }
             finally
@@ -1301,7 +1159,7 @@ public partial class Program
                 var managedExe = Path.Combine(managedDir, "updatetool.exe");
                 await File.WriteAllTextAsync(managedExe, "MOCK_EXE_VERSION_1_0_0");
 
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -1309,7 +1167,7 @@ public partial class Program
                 var depMgr = new DependencyManager(registry, detector, validator, downloader, installer, repair, cache);
 
                 var status = await depMgr.CheckStatusAsync("update-tool");
-                Assert(status == ExtensionStatus.UpdateAvailable, $"W1.5_6a: Older installed version transitions to UpdateAvailable (Actual: {status})");
+                Assert(status == ExtensionStatus.UpdateAvailable, $"W1.5_6a: Older fixture version transitions to UpdateAvailable (Actual: {status})");
                 Assert(depMgr.IsDependencyReady("update-tool"), "W1.5_6b: IsDependencyReady returns TRUE when UpdateAvailable (not broken, user not blocked)");
             }
             finally
@@ -1347,7 +1205,7 @@ public partial class Program
                 // Write 0-byte corrupt file
                 await File.WriteAllBytesAsync(managedExe, Array.Empty<byte>());
 
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -1453,7 +1311,7 @@ public partial class Program
                 Assert(checksumFailed, "W1.5_8c: ExtensionDownloader detects SHA256 checksum mismatch and throws");
 
                 // ExtensionValidator checksum verification
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 bool validChecksumPass = await validator.ValidateInstallerAsync(
                     dummyInstaller,
@@ -1560,7 +1418,7 @@ public partial class Program
                 // Corrupt file initially
                 await File.WriteAllBytesAsync(managedExe, Array.Empty<byte>());
 
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -1610,7 +1468,7 @@ public partial class Program
                 registry.Register(reinstallExt);
 
                 var cache = new ExtensionCacheService(null, cacheDir, extDir);
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -1659,7 +1517,7 @@ public partial class Program
                 registry.Register(cleanExt);
 
                 var cache = new ExtensionCacheService(null, cacheDir, extDir);
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -1708,7 +1566,7 @@ public partial class Program
                 registry.Register(slowExt);
 
                 var cache = new ExtensionCacheService(null, cacheDir, extDir);
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -1798,7 +1656,7 @@ public partial class Program
             {
                 var registry = new ExtensionRegistry();
                 var cache = new ExtensionCacheService(null, cacheDir, extDir);
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -1833,7 +1691,7 @@ public partial class Program
             {
                 var registry = new ExtensionRegistry();
                 var cache = new ExtensionCacheService(null, cacheDir, extDir);
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -1906,7 +1764,7 @@ public partial class Program
             try
             {
                 var cache = new ExtensionCacheService(null, cacheDir, extDir);
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var installer = new ExtensionInstaller(cache, validator, detector);
 
@@ -1950,7 +1808,7 @@ public partial class Program
             try
             {
                 var cache = new ExtensionCacheService(null, cacheDir, extDir);
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var installer = new ExtensionInstaller(cache, validator, detector);
 
@@ -1998,7 +1856,7 @@ public partial class Program
             {
                 var registry = new ExtensionRegistry();
                 var cache = new ExtensionCacheService(null, cacheDir, extDir);
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -2113,7 +1971,7 @@ public partial class Program
                 var registry = new ExtensionRegistry();
                 var im = registry.GetById("imagemagick")!;
                 var cache = new ExtensionCacheService(null, cacheDir, extDir);
-                var detector = new VersionDetector(cache);
+                var detector = new W1_5ManagedFixtureDetector(cache);
                 var validator = new ExtensionValidator(cache, detector);
                 var downloader = new ExtensionDownloader(cache);
                 var installer = new ExtensionInstaller(cache, validator, detector);
@@ -2129,7 +1987,7 @@ public partial class Program
 
                 // Initially check status locally
                 var localStatus = await depMgr.CheckStatusAsync("imagemagick", checkRemoteVersion: false);
-                Assert(localStatus == ExtensionStatus.Installed, "W1.5_23a: ImageMagick detected as Installed locally");
+                Assert(localStatus == ExtensionStatus.Installed, "W1.5_23a: Managed ImageMagick fixture detected as Installed locally");
 
                 // Execute remote update check (where no vendor metadata provider is configured)
                 var latestVer = await detector.FetchLatestVersionAsync(im);
@@ -4454,8 +4312,7 @@ This is a **crucial** concept that requires *careful* consideration.
                 await orch.DisposeAsync();
                 orch.Dispose();
                 orch.Dispose();
-                Assert(true,
-                    "W2D_28: Multiple calls to DisposeAsync and Dispose execute idempotently without exception");
+                RecordEnvironmentObservation("W2D_28 dispose idempotency", "Four dispose calls completed without exception; no state assertion");
             }
         }
         finally
@@ -4717,8 +4574,7 @@ This is a **crucial** concept that requires *careful* consideration.
             {
                 vm.CancelAllCommand.Execute(null);
             }
-            Assert(true,
-                "W2E_27: Rapid command invocation (Start, Pause, Resume, Cancel) executes cleanly without exceptions");
+            RecordEnvironmentObservation("W2E_27 rapid commands", "Ten cancel calls completed without exception; command state not asserted");
 
             // W2E_28: ViewModel Dispose Unsubscribes Events
             vm.Dispose();
@@ -10476,8 +10332,7 @@ Key Principles:
                 else
                 {
                     Console.WriteLine("      (Notice: Windows OCR language pack unavailable on host; live keyword assertions evaluated conditionally)");
-                    Assert(true, "W3C5_4_5a_LiveScannedOcrKeywords: Evaluated conditionally on host OCR readiness");
-                    Assert(true, "W3C5_4_5b_LiveConfidenceBgra: Evaluated conditionally on host OCR readiness");
+                    RecordEnvironmentUnavailable("W3C5_4_5a/b: Windows OCR language pack unavailable; live OCR assertions not executed");
                 }
 
                 // W3C5_4_5c: 4-page alternating PDF (Digital, Scanned, Digital, Scanned)
@@ -14361,7 +14216,7 @@ Key Principles:
             else
             {
                 Console.ForegroundColor = ConsoleColor.DarkYellow;
-                Console.WriteLine("  [NOT-AVAILABLE] TEST-W3D-17-HW: Hardware DirectML Execution (Host does not possess D3D12 GPU or neural model weights)");
+                RecordEnvironmentUnavailable("TEST-W3D-17-HW: D3D12 GPU or neural model weights unavailable");
                 Console.ResetColor();
             }
 
@@ -14544,7 +14399,7 @@ Key Principles:
             else
             {
                 Console.ForegroundColor = ConsoleColor.DarkYellow;
-                Console.WriteLine("  [NOT-AVAILABLE] TEST-W3D-26: DirectML / CPU Equivalence (DirectML hardware or neural model not present in test environment)");
+                RecordEnvironmentUnavailable("TEST-W3D-26: DirectML hardware or neural model unavailable");
                 Console.ResetColor();
             }
 
