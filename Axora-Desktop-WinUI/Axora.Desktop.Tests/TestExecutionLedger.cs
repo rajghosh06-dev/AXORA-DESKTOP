@@ -92,6 +92,7 @@ public partial class Program
         G("W4-T4", "Physical voice diagnostics", RunW4Tier4_DiagnosticsAndPrivacyTests, EvidenceKind.EnvironmentRuntime, "speech pack and microphone; --physical-voice", NativeGroupTimeout),
         G("W4-INT", "Voice view-model integration", RunW4_IntegrationTests, EvidenceKind.Integration),
         G("W4-RULES", "Voice rule matrix gaps", RunW4_RuleMatrixConformanceAudit, EvidenceKind.StaticConformance),
+        G("P3B-LIFECYCLE", "Host startup and disposal ownership", RunP3BLifecycleTests, EvidenceKind.Integration),
     };
 
     // The previous W1.5 fixture wrote text with an .exe suffix, then asked production

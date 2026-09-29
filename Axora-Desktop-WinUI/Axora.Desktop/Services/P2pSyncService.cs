@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -21,12 +23,15 @@ namespace Axora.Desktop.Services;
 ///
 /// Threading &amp; Safety:
 ///   - AcceptLoopAsync runs on a pool thread (Task.Run); never touches UI collections.
-///   - _socketLock SemaphoreSlim guards _activeSockets in every write path with try/finally.
+///   - _socketGate guards socket registration and send leases; network I/O never holds it.
 ///   - ProcessFrameAsync validates all frame offsets before any slice operation.
 ///   - _pairingToken memory is zeroed after each successful pairing handshake.
 /// </summary>
 public sealed class P2pSyncService : IP2pSyncService, IDisposable
 {
+    // Engineering bound per background-task drain phase. Tests may override it;
+    // a timeout means cleanup is incomplete, never successful.
+    public static readonly TimeSpan DefaultBackgroundShutdownTimeout = TimeSpan.FromSeconds(3);
     // ── Protocol Constants ────────────────────────────────────────────────────
     private const int IvLength = 12;
     private const int LengthFieldSize = 4;
@@ -36,12 +41,37 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
     private const string QuickDropFolder = "Axora_QuickDrop";
 
     private readonly ILogger<P2pSyncService> _logger;
+    private readonly TimeSpan _backgroundShutdownTimeout;
 
     // ── Server State ──────────────────────────────────────────────────────────
     private TcpListener? _listener;
     private CancellationTokenSource? _serverCts;
-    private readonly List<WebSocket> _activeSockets = [];
-    private readonly SemaphoreSlim _socketLock = new(1, 1);
+    private readonly List<ActiveSocket> _activeSockets = [];
+    private readonly object _socketGate = new();
+    private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
+    private Task? _acceptTask;
+    private Task? _broadcastTask;
+    private Task? _cancelTask;
+    private Task? _listenerStopTask;
+    private readonly ConcurrentDictionary<long, Task> _clientTasks = new();
+    private readonly ConcurrentDictionary<long, Task> _outboundTasks = new();
+    private long _nextClientTaskId;
+    private long _nextOutboundTaskId;
+    private int _disposed;
+    private bool _stopping;
+    private bool _backgroundTasksIncomplete;
+
+    private sealed class ActiveSocket(WebSocket socket)
+    {
+        public WebSocket Socket { get; } = socket;
+        // WebSocket permits only one concurrent send. The client handler owns
+        // disposal and waits for all borrowed send leases before leaving scope.
+        public SemaphoreSlim SendGate { get; } = new(1, 1);
+        public TaskCompletionSource Drained { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task? AbortTask; // guarded by _socketGate
+        public int Leases; // guarded by _socketGate
+        public bool Retired; // guarded by _socketGate
+    }
 
     // ── ECDH Key Material (regenerated each server start) ─────────────────────
     private ECDiffieHellmanCng? _ecdhKey;
@@ -58,15 +88,8 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
     {
         get
         {
-            _socketLock.Wait(50);
-            try
-            {
-                return _activeSockets.Count(s => s.State == WebSocketState.Open);
-            }
-            finally
-            {
-                _socketLock.Release();
-            }
+            lock (_socketGate)
+                return _activeSockets.Count(s => !s.Retired && s.Socket.State == WebSocketState.Open);
         }
     }
 
@@ -74,120 +97,309 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
     public event EventHandler<AxoraDevice>? DeviceDisconnected;
     public event EventHandler<QuickDropItem>? FileReceived;
 
-    public P2pSyncService(ILogger<P2pSyncService> logger)
+    public P2pSyncService(ILogger<P2pSyncService> logger, TimeSpan? backgroundShutdownTimeout = null)
     {
         _logger = logger;
+        _backgroundShutdownTimeout = backgroundShutdownTimeout ?? DefaultBackgroundShutdownTimeout;
+        if (_backgroundShutdownTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(backgroundShutdownTimeout));
     }
 
     /// <inheritdoc/>
     public async Task StartAsync(CancellationToken ct = default)
     {
-        if (IsRunning) return;
-        await Task.Yield();
-
-        // Regenerate ECDH key pair for this session
-        _ecdhKey = new ECDiffieHellmanCng(ECCurve.NamedCurves.nistP256)
+        if (Volatile.Read(ref _disposed) != 0) throw new ObjectDisposedException(nameof(P2pSyncService));
+        await _lifecycleLock.WaitAsync(ct);
+        try
         {
-            KeyDerivationFunction = ECDiffieHellmanKeyDerivationFunction.Hash,
-            HashAlgorithm = CngAlgorithm.Sha256
-        };
-        _publicKeyBytes = _ecdhKey.ExportSubjectPublicKeyInfo(); // DER-encoded SPKI
+            if (Volatile.Read(ref _disposed) != 0) throw new ObjectDisposedException(nameof(P2pSyncService));
+            if (_backgroundTasksIncomplete)
+                throw new InvalidOperationException("P2P cannot restart after an incomplete background-task shutdown.");
+            if (IsRunning) return;
+            ct.ThrowIfCancellationRequested();
+            lock (_socketGate) _stopping = false;
 
-        // Bind to LAN IPv4 on dynamic port
-        _localIp = GetLocalLanIpv4();
-        _listener = new TcpListener(_localIp, 0);
-        _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-        _listener.ExclusiveAddressUse = false;
-        _listener.Start(backlog: 8);
-        _localPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
+            try
+            {
+                // Regenerate ECDH key pair for this session
+                _ecdhKey = new ECDiffieHellmanCng(ECCurve.NamedCurves.nistP256)
+                {
+                    KeyDerivationFunction = ECDiffieHellmanKeyDerivationFunction.Hash,
+                    HashAlgorithm = CngAlgorithm.Sha256
+                };
+                _publicKeyBytes = _ecdhKey.ExportSubjectPublicKeyInfo(); // DER-encoded SPKI
 
-        // Generate one-time pairing token
-        _pairingToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+                // Bind to LAN IPv4 on dynamic port
+                _localIp = GetLocalLanIpv4();
+                _listener = new TcpListener(_localIp, 0);
+                _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _listener.ExclusiveAddressUse = false;
+                _listener.Start(backlog: 8);
+                _localPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
 
-        PairingQrJson = JsonSerializer.Serialize(new
-        {
-            ip = _localIp.ToString(),
-            port = _localPort,
-            token = _pairingToken,
-            pubkey = Convert.ToBase64String(_publicKeyBytes),
-            service = "Axora"
-        });
+                // Generate one-time pairing token
+                _pairingToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
 
-        _serverCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _ = Task.Run(() => AcceptLoopAsync(_serverCts.Token), _serverCts.Token);
-        _ = Task.Run(() => MdnsBroadcastLoopAsync(_serverCts.Token), _serverCts.Token);
+                PairingQrJson = JsonSerializer.Serialize(new
+                {
+                    ip = _localIp.ToString(),
+                    port = _localPort,
+                    token = _pairingToken,
+                    pubkey = Convert.ToBase64String(_publicKeyBytes),
+                    service = "Axora"
+                });
 
-        _logger.LogInformation("P2P server started on {Ip}:{Port} with mDNS advertising", _localIp, _localPort);
+                _serverCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                var serverToken = _serverCts.Token;
+                _acceptTask = Task.Run(() => AcceptLoopAsync(serverToken), serverToken);
+                _broadcastTask = Task.Run(() => MdnsBroadcastLoopAsync(serverToken), serverToken);
+
+                _logger.LogInformation("P2P server started on {Ip}:{Port} with mDNS advertising", _localIp, _localPort);
+            }
+            catch (Exception startFailure)
+            {
+                try { await StopCoreAsync(); }
+                catch (Exception cleanupFailure)
+                {
+                    throw new AggregateException("P2P startup and partial cleanup both failed.", startFailure, cleanupFailure);
+                }
+                throw;
+            }
+        }
+        finally { _lifecycleLock.Release(); }
     }
 
     /// <inheritdoc/>
     public async Task StopAsync(CancellationToken ct = default)
     {
-        if (!IsRunning && _serverCts is null) return;
-
-        try
+        if (Volatile.Read(ref _disposed) != 0) return;
+        var stopClock = Stopwatch.StartNew();
+        if (!await _lifecycleLock.WaitAsync(_backgroundShutdownTimeout, ct))
         {
-            _serverCts?.Cancel();
+            Volatile.Write(ref _backgroundTasksIncomplete, true);
+            throw new TimeoutException("P2P stop could not acquire lifecycle ownership within its complete stop budget.");
         }
-        catch (ObjectDisposedException) { }
+        try { await StopCoreAsync(stopClock); }
+        finally { _lifecycleLock.Release(); }
+    }
 
-        try
+    private async Task StopCoreAsync(Stopwatch? stopClock = null)
+    {
+        if (!IsRunning && _serverCts is null && _ecdhKey is null &&
+            _acceptTask is null && _broadcastTask is null && _cancelTask is null && _listenerStopTask is null &&
+            _clientTasks.IsEmpty &&
+            _outboundTasks.IsEmpty && !_backgroundTasksIncomplete) return;
+
+        stopClock ??= Stopwatch.StartNew();
+        Exception? taskFailure = null;
+        ActiveSocket[] sockets;
+        Task[] abortTasks;
+        lock (_socketGate)
         {
-            _listener?.Stop();
+            _stopping = true;
+            sockets = _activeSockets.ToArray();
+            // Reserve abort ownership before retirement can complete a
+            // zero-lease drain signal and permit client disposal.
+            abortTasks = sockets.Where(s => !s.Drained.Task.IsCompleted)
+                .Select(BeginAbortSocket).ToArray();
+            foreach (var socket in sockets) RetireSocketUnderLock(socket);
         }
-        catch { }
-        _listener = null;
 
-        await _socketLock.WaitAsync(ct);
         try
         {
-            foreach (var ws in _activeSockets)
+            if (_serverCts is not null)
             {
-                try
-                {
-                    if (ws.State == WebSocketState.Open)
-                    {
-                        using var closeTimeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutdown", closeTimeout.Token);
-                    }
-                }
-                catch { }
-                try { ws.Dispose(); } catch { }
+                // CancelAsync requests cancellation before returning but does
+                // not synchronously run potentially blocking token callbacks.
+                _cancelTask ??= _serverCts.CancelAsync();
+                var remaining = _backgroundShutdownTimeout - stopClock.Elapsed;
+                if (remaining <= TimeSpan.Zero)
+                    throw new TimeoutException("P2P cancellation exceeded the complete stop budget.");
+                await _cancelTask.WaitAsync(remaining);
             }
-            _activeSockets.Clear();
         }
-        finally
+        catch (Exception ex)
         {
-            _socketLock.Release();
+            taskFailure = ex;
+            _logger.LogWarning(ex, "P2P cancellation did not finish cleanly during shutdown.");
         }
 
+        // TcpListener.Stop and WebSocket.Abort are synchronous APIs. Run them as
+        // owned background operations so a stalled implementation cannot block
+        // the dispatcher before the common stop deadline begins to apply.
+        if (_listener is not null && (_listenerStopTask is null || _listenerStopTask.IsFaulted))
+        {
+            var listener = _listener;
+            _listenerStopTask = Task.Run(() => listener.Stop());
+        }
+        async Task DrainWithinStopBudget(string name, Task[] tasks)
+        {
+            if (tasks.Length == 0) return;
+            try
+            {
+                var remaining = _backgroundShutdownTimeout - stopClock.Elapsed;
+                if (remaining <= TimeSpan.Zero)
+                    throw new TimeoutException($"P2P {name} exceeded the complete stop budget.");
+                await Task.WhenAll(tasks).WaitAsync(remaining);
+            }
+            catch (OperationCanceledException) when (_serverCts?.IsCancellationRequested == true && tasks.All(t => t.IsCompleted)) { }
+            catch (Exception ex)
+            {
+                taskFailure = taskFailure is null ? ex : new AggregateException(taskFailure, ex);
+                _logger.LogWarning(ex, "P2P {TaskGroup} did not finish cleanly during shutdown.", name);
+            }
+        }
+
+        var socketStopTasks = new[] { _listenerStopTask }.OfType<Task>().Concat(abortTasks).ToArray();
+        await DrainWithinStopBudget("listener/socket stop", socketStopTasks);
+        if (_listenerStopTask?.IsCompletedSuccessfully == true)
+        {
+            _listener = null;
+            _listenerStopTask = null;
+        }
+
+        var serverTasks = new[] { _acceptTask, _broadcastTask }.OfType<Task>().ToArray();
+        await DrainWithinStopBudget("server tasks", serverTasks);
+        // The accept loop is now finished (or still explicitly incomplete), so
+        // its registered client tasks and all admitted outbound sends are visible.
+        var clientAndSendTasks = _clientTasks.Values.Concat(_outboundTasks.Values).ToArray();
+        await DrainWithinStopBudget("client/send tasks", clientAndSendTasks);
+        bool socketsRemain;
+        lock (_socketGate) socketsRemain = _activeSockets.Count != 0;
+        _backgroundTasksIncomplete = _listener is not null ||
+            (_listenerStopTask is not null && !_listenerStopTask.IsCompleted) ||
+            socketStopTasks.Any(t => !t.IsCompleted) ||
+            (_cancelTask is not null && !_cancelTask.IsCompleted) ||
+            serverTasks.Any(t => !t.IsCompleted) ||
+            clientAndSendTasks.Any(t => !t.IsCompleted) || socketsRemain;
         PairingQrJson = string.Empty;
+        if (_backgroundTasksIncomplete)
+            throw new InvalidOperationException("P2P stop is incomplete; socket, task, key and cancellation ownership retained for retry.",
+                taskFailure ?? new TimeoutException("P2P work remains active."));
+
+        _acceptTask = null;
+        _broadcastTask = null;
+        _pairingToken = string.Empty;
         try { _ecdhKey?.Dispose(); } catch { }
         _ecdhKey = null;
 
         try { _serverCts?.Dispose(); } catch { }
         _serverCts = null;
+        _cancelTask = null;
 
         _logger.LogInformation("P2P server stopped.");
+        if (taskFailure is not null)
+            throw new InvalidOperationException("P2P background tasks did not finish cleanly.", taskFailure);
     }
 
     /// <inheritdoc/>
     public async Task BroadcastAsync(byte[] payload, CancellationToken ct = default)
     {
-        await _socketLock.WaitAsync(ct);
+        var frame = BuildFrame(payload, Array.Empty<byte>()); // session key per socket — simplified
+        long id = Interlocked.Increment(ref _nextOutboundTaskId);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ActiveSocket[] sockets;
+        CancellationToken serviceToken;
+        lock (_socketGate)
+        {
+            if (_stopping || _serverCts is null || _serverCts.IsCancellationRequested)
+                throw new OperationCanceledException("P2P is not accepting outbound sends.");
+            serviceToken = _serverCts.Token;
+            sockets = _activeSockets.Where(s => !s.Retired).ToArray();
+            foreach (var socket in sockets) socket.Leases++;
+            _outboundTasks[id] = completed.Task;
+        }
+
         try
         {
-            var deadSockets = new List<WebSocket>();
-            foreach (var ws in _activeSockets)
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, serviceToken);
+            await Task.WhenAll(sockets.Select(async socket =>
             {
-                if (ws.State != WebSocketState.Open) { deadSockets.Add(ws); continue; }
-                // Encrypt and frame the payload
-                var frame = BuildFrame(payload, Array.Empty<byte>()); // session key per socket — simplified
-                await ws.SendAsync(frame, WebSocketMessageType.Binary, true, ct);
-            }
-            foreach (var dead in deadSockets) _activeSockets.Remove(dead);
+                try
+                {
+                    await socket.SendGate.WaitAsync(linked.Token);
+                    try
+                    {
+                        linked.Token.ThrowIfCancellationRequested();
+                        if (socket.Socket.State == WebSocketState.Open)
+                            await socket.Socket.SendAsync(frame, WebSocketMessageType.Binary, true, linked.Token);
+                        else RetireSocket(socket);
+                    }
+                    finally { socket.SendGate.Release(); }
+                }
+                finally { ReleaseSocketLease(socket); }
+            }));
         }
-        finally { _socketLock.Release(); }
+        finally
+        {
+            completed.TrySetResult();
+            _outboundTasks.TryRemove(id, out _);
+        }
+    }
+
+    private ActiveSocket RegisterSocket(WebSocket socket)
+    {
+        lock (_socketGate)
+        {
+            if (_stopping || _serverCts is null || _serverCts.IsCancellationRequested)
+                throw new OperationCanceledException("P2P is stopping; client socket registration rejected.");
+            var entry = new ActiveSocket(socket);
+            _activeSockets.Add(entry);
+            return entry;
+        }
+    }
+
+    private void RetireSocketUnderLock(ActiveSocket socket)
+    {
+        socket.Retired = true;
+        if (socket.Leases == 0) socket.Drained.TrySetResult();
+    }
+
+    private Task BeginAbortSocket(ActiveSocket socket)
+    {
+        lock (_socketGate)
+        {
+            if (socket.AbortTask is { IsCompleted: false }) return socket.AbortTask;
+            if (socket.AbortTask?.IsCompletedSuccessfully == true) return socket.AbortTask;
+            socket.Leases++;
+            try
+            {
+                socket.AbortTask = Task.Run(() =>
+                {
+                    try { socket.Socket.Abort(); }
+                    finally { ReleaseSocketLease(socket); }
+                });
+                return socket.AbortTask;
+            }
+            catch
+            {
+                socket.Leases--;
+                if (socket.Retired && socket.Leases == 0) socket.Drained.TrySetResult();
+                throw;
+            }
+        }
+    }
+
+    private void RetireSocket(ActiveSocket socket)
+    {
+        lock (_socketGate) RetireSocketUnderLock(socket);
+    }
+
+    private void ReleaseSocketLease(ActiveSocket socket)
+    {
+        lock (_socketGate)
+        {
+            socket.Leases--;
+            if (socket.Retired && socket.Leases == 0) socket.Drained.TrySetResult();
+        }
+    }
+
+    private async Task RetireAndDrainSocketAsync(ActiveSocket socket)
+    {
+        lock (_socketGate) RetireSocketUnderLock(socket);
+        await socket.Drained.Task;
+        lock (_socketGate) _activeSockets.Remove(socket);
+        socket.SendGate.Dispose();
     }
 
     // ── Private: Accept Loop ──────────────────────────────────────────────────
@@ -201,7 +413,17 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
                 var listener = _listener;
                 if (listener == null) break;
                 var tcpClient = await listener.AcceptTcpClientAsync(ct);
-                _ = Task.Run(() => HandleClientAsync(tcpClient, ct), ct);
+                long id = Interlocked.Increment(ref _nextClientTaskId);
+                // The handler must run even if shutdown cancels immediately: it owns
+                // disposal of the accepted TcpClient.
+                Task clientTask = Task.Run(() => HandleClientAsync(tcpClient, ct));
+                _clientTasks[id] = clientTask;
+                _ = clientTask.ContinueWith(completed =>
+                {
+                    if (completed.IsFaulted)
+                        _logger.LogWarning(completed.Exception, "P2P client task failed.");
+                    _clientTasks.TryRemove(id, out _);
+                }, TaskScheduler.Default);
             }
             catch (OperationCanceledException) { break; }
             catch (ObjectDisposedException) { break; }
@@ -220,15 +442,18 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
     private async Task HandleClientAsync(TcpClient tcpClient, CancellationToken ct)
     {
         using var client = tcpClient;
-        var stream = client.GetStream();
 
         try
         {
+            var stream = client.GetStream();
             // ── Step 1: Read HTTP upgrade request ────────────────────────────
             var context = await HttpWebSocketHandshake(stream, ct);
             if (context is null) return;
 
             using var ws = context;
+            ActiveSocket? registration = null;
+            try
+            {
 
             // ── Step 2: ECDH Key Exchange (first binary message is client pubkey + token) ──
             var handshakeBuffer = new byte[512];
@@ -277,10 +502,7 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
             };
             DeviceConnected?.Invoke(this, device);
 
-            // FIX W-2: SemaphoreSlim release must be in finally block to prevent permanent deadlock
-            await _socketLock.WaitAsync(ct);
-            try { _activeSockets.Add(ws); }
-            finally { _socketLock.Release(); }
+            registration = RegisterSocket(ws);
 
             // ── Step 5: Message receive loop ─────────────────────────────────
             var recvBuffer = new byte[1024 * 1024 + IvLength + LengthFieldSize + GcmTagSize];
@@ -296,15 +518,20 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
             device.IsConnected = false;
             DeviceDisconnected?.Invoke(this, device);
 
-            // Remove from active list on clean disconnect
-            await _socketLock.WaitAsync(CancellationToken.None);
-            try { _activeSockets.Remove(ws); }
-            finally { _socketLock.Release(); }
-
             // Zero session key from memory after connection ends
             CryptographicOperations.ZeroMemory(sessionKey);
+            }
+            finally
+            {
+                // The handler owns WebSocket disposal. Borrowed outbound sends
+                // must finish before the using scope can release that socket.
+                if (registration is not null) await RetireAndDrainSocketAsync(registration);
+            }
         }
         catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) when (ct.IsCancellationRequested) { }
+        catch (IOException) when (ct.IsCancellationRequested) { }
+        catch (SocketException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error handling P2P client.");
@@ -511,8 +738,8 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
             {
                 try
                 {
-                    await udpClient.SendAsync(beaconBytes, beaconBytes.Length, endPoint);
-                    await udpClient.SendAsync(beaconBytes, beaconBytes.Length, mdnsEndPoint);
+                    await udpClient.SendAsync(beaconBytes.AsMemory(), endPoint, ct);
+                    await udpClient.SendAsync(beaconBytes.AsMemory(), mdnsEndPoint, ct);
                     await Task.Delay(TimeSpan.FromSeconds(3), ct);
                 }
                 catch (OperationCanceledException) { break; }
@@ -548,11 +775,16 @@ public sealed class P2pSyncService : IP2pSyncService, IDisposable
 
     public void Dispose()
     {
-        try
-        {
-            StopAsync().GetAwaiter().GetResult();
-        }
-        catch { }
-        try { _socketLock.Dispose(); } catch { }
+        if (Volatile.Read(ref _disposed) != 0) return;
+        // The App performs the awaited operational stop before host disposal.
+        // A still-running listener here is an ownership failure, not a silent success.
+        bool socketsRemain;
+        lock (_socketGate) socketsRemain = _activeSockets.Count != 0;
+        if (_listener is not null || _serverCts is not null || _backgroundTasksIncomplete || socketsRemain ||
+            _acceptTask is not null || _broadcastTask is not null || _cancelTask is not null || _listenerStopTask is not null ||
+            _clientTasks.Values.Any(t => !t.IsCompleted) || _outboundTasks.Values.Any(t => !t.IsCompleted))
+            throw new InvalidOperationException("P2P service was disposed before its operational stop completed.");
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _lifecycleLock.Dispose();
     }
 }

@@ -29,6 +29,15 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
     private TimeSpan _acousticDebounceInterval = TimeSpan.FromMilliseconds(250);
     private Action<string>? _activeDictationCallback;
     private bool _wasListeningBeforeSpeech;
+    private readonly object _stopGate = new();
+    private Task? _stopTask;
+    private int _stopping;
+    private int _disposed;
+    private int _subscriptionsDetached;
+    private readonly CancellationTokenSource _speechShutdown = new();
+    private readonly object _speechTasksGate = new();
+    private readonly System.Collections.Generic.HashSet<Task> _speechTasks = new();
+    private readonly System.Collections.Generic.HashSet<Task> _completionTasks = new();
 
     public VoiceSessionState CurrentState
     {
@@ -53,6 +62,7 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
         get => _isVoiceNavigationEnabled;
         set
         {
+            if (Volatile.Read(ref _stopping) != 0) return;
             if (_isVoiceNavigationEnabled != value)
             {
                 _isVoiceNavigationEnabled = value;
@@ -101,6 +111,7 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
 
     private void OnDeviceStatusChanged(object? sender, AudioDeviceStatusChangedEventArgs e)
     {
+        if (Volatile.Read(ref _stopping) != 0) return;
         if (e.Health == AudioCaptureHealth.NoMicrophoneDetected || e.Health == AudioCaptureHealth.PermissionDenied)
         {
             if (CurrentState == VoiceSessionState.Dictating || CurrentState == VoiceSessionState.ListeningForCommand)
@@ -112,17 +123,42 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
 
     private void OnPlaybackStateChanged(object? sender, SpeechPlaybackStateChangedEventArgs e)
     {
+        if (Volatile.Read(ref _stopping) != 0) return;
         if (!e.IsSpeaking && CurrentState == VoiceSessionState.Synthesizing)
         {
-            _ = HandleSpeechEndedAsync();
+            QueueSpeechEnded();
+        }
+    }
+
+    private void QueueSpeechEnded()
+    {
+        lock (_speechTasksGate)
+        {
+            if (Volatile.Read(ref _stopping) != 0) return;
+            var task = HandleSpeechEndedAsync();
+            _completionTasks.Add(task);
+            _ = task.ContinueWith(completed =>
+            {
+                lock (_speechTasksGate) _completionTasks.Remove(completed);
+                // Observe an unexpected callback failure; it must not become an
+                // unobserved fire-and-forget exception.
+                if (completed.IsFaulted)
+                {
+                    var failure = completed.Exception;
+                    try { _logger?.LogWarning(failure, "Voice completion callback failed."); }
+                    catch { System.Diagnostics.Debug.WriteLine($"Voice completion callback failed: {failure}"); }
+                }
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
     }
 
     private async Task HandleSpeechEndedAsync()
     {
+        if (Volatile.Read(ref _stopping) != 0) return;
         await _stateLock.WaitAsync();
         try
         {
+            if (Volatile.Read(ref _stopping) != 0) return;
             if (CurrentState != VoiceSessionState.Synthesizing) return;
 
             // R-VOICE-05: Apply configurable acoustic debounce interval to allow room reverberation to settle
@@ -130,6 +166,8 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
             {
                 await Task.Delay(_acousticDebounceInterval);
             }
+
+            if (Volatile.Read(ref _stopping) != 0) return;
 
             if (_wasListeningBeforeSpeech && _isVoiceNavigationEnabled)
             {
@@ -155,9 +193,11 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
 
     public async Task<bool> RequestStartDictationAsync(Action<string> onFormattedChunk, CancellationToken ct = default)
     {
+        if (Volatile.Read(ref _stopping) != 0) return false;
         await _stateLock.WaitAsync(ct);
         try
         {
+            if (Volatile.Read(ref _stopping) != 0) return false;
             // If already synthesizing, do not start dictation (mutual exclusion)
             if (CurrentState == VoiceSessionState.Synthesizing)
             {
@@ -209,15 +249,17 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
 
     public async Task RequestStopDictationAsync()
     {
+        if (Volatile.Read(ref _stopping) != 0) return;
         await _stateLock.WaitAsync();
         try
         {
+            if (Volatile.Read(ref _stopping) != 0) return;
             if (CurrentState != VoiceSessionState.Dictating) return;
 
             await _transcriber.StopDictationAsync();
             _activeDictationCallback = null;
 
-            if (_isVoiceNavigationEnabled)
+            if (_isVoiceNavigationEnabled && Volatile.Read(ref _stopping) == 0)
             {
                 CurrentState = VoiceSessionState.ListeningForCommand;
                 await _commandRouter.StartListeningAsync();
@@ -240,11 +282,12 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
 
     public async Task<bool> RequestSpeakAsync(string text, double? pitch = null, double? rate = null, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(text)) return false;
+        if (string.IsNullOrWhiteSpace(text) || Volatile.Read(ref _stopping) != 0) return false;
 
         await _stateLock.WaitAsync(ct);
         try
         {
+            if (Volatile.Read(ref _stopping) != 0) return false;
             // R-VOICE-04: Mutual exclusion — stop/pause mic listening during active speech synthesis
             if (CurrentState == VoiceSessionState.Dictating)
             {
@@ -261,7 +304,7 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
             double p = pitch ?? _settings.SpeechPitch;
             double r = rate ?? _settings.SpeechRate;
 
-            _ = _speechService.SpeakTextAsync(text, p, r, ct);
+            TrackSpeech(SpeakForLifecycleAsync(text, p, r, ct));
             return true;
         }
         catch (Exception ex)
@@ -278,18 +321,21 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
 
     public void RequestStopSpeech()
     {
+        if (Volatile.Read(ref _stopping) != 0) return;
         _speechService.Stop();
         if (CurrentState == VoiceSessionState.Synthesizing)
         {
-            _ = HandleSpeechEndedAsync();
+            QueueSpeechEnded();
         }
     }
 
     public async Task<bool> StartVoiceNavigationAsync(CancellationToken ct = default)
     {
+        if (Volatile.Read(ref _stopping) != 0) return false;
         await _stateLock.WaitAsync(ct);
         try
         {
+            if (Volatile.Read(ref _stopping) != 0) return false;
             if (CurrentState == VoiceSessionState.Synthesizing || CurrentState == VoiceSessionState.Dictating)
             {
                 _isVoiceNavigationEnabled = true;
@@ -309,9 +355,11 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
 
     public async Task StopVoiceNavigationAsync()
     {
+        if (Volatile.Read(ref _stopping) != 0) return;
         await _stateLock.WaitAsync();
         try
         {
+            if (Volatile.Read(ref _stopping) != 0) return;
             await _commandRouter.StopListeningAsync();
             _isVoiceNavigationEnabled = false;
             if (CurrentState == VoiceSessionState.ListeningForCommand)
@@ -325,16 +373,94 @@ public sealed class VoiceCoordinator : IVoiceCoordinator, IDisposable
         }
     }
 
-    public void Dispose()
+    public Task StopAsync()
     {
+        lock (_stopGate)
+            return _stopTask ??= StopCoreAsync();
+    }
+
+    private async Task StopCoreAsync()
+    {
+        // Close callback admission atomically with the owned-task registry.
+        lock (_speechTasksGate) Interlocked.Exchange(ref _stopping, 1);
+        // Publish the owned stop Task to AppLifecycle before entering WinRT
+        // dictation or media teardown. Stay on the calling apartment; moving
+        // these APIs to Task.Run would not be a safe threading assumption.
+        await Task.Yield();
+        var errors = new System.Collections.Generic.List<Exception>();
+        try { _speechShutdown.Cancel(); }
+        catch (Exception ex) { errors.Add(ex); }
+        try { DetachSubscriptions(); }
+        catch (Exception ex) { errors.Add(ex); }
+        await _stateLock.WaitAsync();
+        try
+        {
+            try { await _transcriber.StopDictationAsync(); }
+            catch (Exception ex) { errors.Add(ex); }
+            try { await _commandRouter.StopListeningAsync(); }
+            catch (Exception ex) { errors.Add(ex); }
+            try { _speechService.Stop(); }
+            catch (Exception ex) { errors.Add(ex); }
+            _activeDictationCallback = null;
+            _wasListeningBeforeSpeech = false;
+            try { CurrentState = VoiceSessionState.Idle; }
+            catch (Exception ex)
+            {
+                _currentState = VoiceSessionState.Idle;
+                errors.Add(ex);
+            }
+        }
+        finally
+        {
+            _stateLock.Release();
+        }
+
+        Task[] pendingWork;
+        lock (_speechTasksGate)
+            pendingWork = _speechTasks.Concat(_completionTasks).ToArray();
+        try { await Task.WhenAll(pendingWork); }
+        catch (Exception ex) { errors.Add(ex); }
+        if (errors.Count > 0)
+            throw new AggregateException("Voice operational stop had one or more failures.", errors);
+    }
+
+    private async Task SpeakForLifecycleAsync(string text, double pitch, double rate, CancellationToken callerToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(callerToken, _speechShutdown.Token);
+        try { await _speechService.SpeakTextAsync(text, pitch, rate, linked.Token); }
+        catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
+        catch (Exception ex) { _logger?.LogWarning(ex, "Speech task failed during voice lifecycle."); }
+    }
+
+    private void TrackSpeech(Task task)
+    {
+        lock (_speechTasksGate) _speechTasks.Add(task);
+        _ = task.ContinueWith(completed =>
+        {
+            lock (_speechTasksGate) _speechTasks.Remove(completed);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    private void DetachSubscriptions()
+    {
+        if (Interlocked.Exchange(ref _subscriptionsDetached, 1) != 0) return;
         _deviceMonitor.DeviceStatusChanged -= OnDeviceStatusChanged;
         _speechService.PlaybackStateChanged -= OnPlaybackStateChanged;
-        RequestStopSpeech();
-        CurrentState = VoiceSessionState.Idle;
-        _transcriber.Dispose();
-        _commandRouter.Dispose();
-        _deviceMonitor.Dispose();
-        _speechService.Dispose();
-        _stateLock.Dispose();
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Interlocked.Exchange(ref _stopping, 1);
+        DetachSubscriptions();
+        _activeDictationCallback = null;
+        _wasListeningBeforeSpeech = false;
+        StateChanged = null;
+        _currentState = VoiceSessionState.Idle;
+        if (_stopTask?.IsCompletedSuccessfully == true)
+        {
+            _speechShutdown.Dispose();
+            _stateLock.Dispose();
+        }
     }
 }

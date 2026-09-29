@@ -191,7 +191,7 @@ public sealed class SpeechSynthesisService : ISpeechSynthesisService, IDisposabl
 
     public void Stop()
     {
-        if (_player != null)
+        if (_player?.Source != null)
         {
             _player.Pause();
             _player.Source = null;

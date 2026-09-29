@@ -23,6 +23,7 @@ public interface IVoiceCoordinator : IDisposable
     void RequestStopSpeech();
     Task<bool> StartVoiceNavigationAsync(CancellationToken ct = default);
     Task StopVoiceNavigationAsync();
+    Task StopAsync();
 
     event EventHandler<VoiceSessionStateChangedEventArgs>? StateChanged;
 }

@@ -21,6 +21,7 @@ public sealed partial class App : Application
     public static IHost AppHost { get; private set; } = null!;
     public static MainWindow? MainAppWindow { get; private set; }
     public static IntPtr MainWindowHandle { get; private set; } = IntPtr.Zero;
+    private static AppLifecycle? _lifecycle;
 
     public App()
     {
@@ -32,10 +33,6 @@ public sealed partial class App : Application
         UnhandledException += (s, e) =>
         {
             Log($"[App.UnhandledException] Message: {e.Message} | HResult: 0x{e.Exception.HResult:X8}\n{e.Exception}");
-            if (e.Exception is not (OutOfMemoryException or AccessViolationException))
-            {
-                e.Handled = true;
-            }
         };
 
         try
@@ -51,6 +48,7 @@ public sealed partial class App : Application
             {
                 Log($"[App] Inner exception: {ex.InnerException}");
             }
+            throw;
         }
 
         Log("Building AppHost...");
@@ -76,10 +74,12 @@ public sealed partial class App : Application
                 services.AddSingleton<IVoiceTextFormatter, VoiceTextFormatter>();
                 services.AddSingleton<IVoiceCommandRouter, VoiceCommandRouter>();
                 services.AddSingleton<IAudioDeviceMonitor, AudioDeviceMonitor>();
-                services.AddSingleton<IVoiceCoordinator, VoiceCoordinator>();
+                services.AddSingleton<IVoiceCoordinator>(sp =>
+                    _lifecycle!.CreateVoice(() => ActivatorUtilities.CreateInstance<VoiceCoordinator>(sp)));
                 services.AddSingleton<IDocumentChatService, DocumentChatService>();
                 services.AddSingleton<ITrayService, TrayService>();
-                services.AddSingleton<IP2pSyncService, P2pSyncService>();
+                services.AddSingleton<IP2pSyncService>(sp =>
+                    _lifecycle!.CreateP2p(() => ActivatorUtilities.CreateInstance<P2pSyncService>(sp)));
                 services.AddSingleton<ISecurityVaultService, StreamingVaultService>();
                 services.AddSingleton<ITpmSecurityProfileService, TpmSecurityProfileService>();
                 services.AddSingleton<IPdfAnnotationService, PdfAnnotationService>();
@@ -195,6 +195,7 @@ public sealed partial class App : Application
                 services.AddSingleton<SettingsViewModel>();
             })
             .Build();
+        _lifecycle = new AppLifecycle(AppHost, Log);
         Log("AppHost built.");
     }
 
@@ -209,96 +210,8 @@ public sealed partial class App : Application
         return AppHost.Services.GetService<T>();
     }
 
-    private static readonly object _shutdownLock = new();
-    private static System.Threading.Tasks.Task? _shutdownTask;
-
-    public static System.Threading.Tasks.Task ShutdownAsync()
-    {
-        lock (_shutdownLock)
-        {
-            _shutdownTask ??= DoShutdownAsync();
-            return _shutdownTask;
-        }
-    }
-
-    private static async System.Threading.Tasks.Task DoShutdownAsync()
-    {
-        string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "startup.log");
-        void Log(string msg) => File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
-
-        Log("App.ShutdownAsync initiated.");
-
-        try
-        {
-            var tray = TryGetService<ITrayService>();
-            if (tray != null)
-            {
-                try
-                {
-                    tray.Remove();
-                    if (tray is IDisposable disposableTray)
-                    {
-                        disposableTray.Dispose();
-                    }
-                    Log("TrayService removed and disposed.");
-                }
-                catch (Exception ex)
-                {
-                    Log($"Tray disposal error: {ex.Message}");
-                }
-            }
-
-            var p2p = TryGetService<IP2pSyncService>();
-            if (p2p != null)
-            {
-                try
-                {
-                    await p2p.StopAsync().ConfigureAwait(false);
-                    Log("P2pSyncService stopped.");
-                }
-                catch (Exception ex)
-                {
-                    Log($"P2P stop error: {ex.Message}");
-                }
-            }
-
-            var voiceCoord = TryGetService<IVoiceCoordinator>();
-            if (voiceCoord != null)
-            {
-                try
-                {
-                    voiceCoord.Dispose();
-                    Log("VoiceCoordinator disposed.");
-                }
-                catch (Exception ex)
-                {
-                    Log($"VoiceCoordinator disposal error: {ex.Message}");
-                }
-            }
-
-            if (AppHost != null)
-            {
-                try
-                {
-                    await AppHost.StopAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
-                    AppHost.Dispose();
-                    Log("AppHost stopped and disposed.");
-                }
-                catch (Exception ex)
-                {
-                    Log($"AppHost shutdown error: {ex.Message}");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Log($"ShutdownAsync fatal error: {ex}");
-        }
-        finally
-        {
-            Log("App.ShutdownAsync completed.");
-        }
-    }
+    public static System.Threading.Tasks.Task ShutdownAsync() =>
+        _lifecycle?.ShutdownAsync() ?? System.Threading.Tasks.Task.CompletedTask;
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
@@ -307,57 +220,84 @@ public sealed partial class App : Application
         void Log(string msg) => File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
 
         Log("App.OnLaunched invoked.");
+        _ = LaunchAsync();
+    }
+
+    private async System.Threading.Tasks.Task LaunchAsync()
+    {
+        string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "startup.log");
+        void Log(string msg) => File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
+        void LogSafely(string msg)
+        {
+            try { Log(msg); }
+            catch (Exception loggingError)
+            {
+                Environment.ExitCode = 1;
+                System.Diagnostics.Debug.WriteLine($"Lifecycle log failure: {loggingError}; original message: {msg}");
+            }
+        }
+
         try
         {
-            MainAppWindow = new MainWindow();
-            Log("MainWindow instantiated.");
-
-            MainAppWindow.Closed += async (_, _) =>
+            await _lifecycle!.StartAsync(async () =>
             {
-                Log("MainWindow.Closed triggered. Commencing graceful shutdown.");
-                await ShutdownAsync();
-            };
-
-            var themeService = GetService<IThemeService>();
-            themeService.Initialize(MainAppWindow);
-            Log("ThemeService initialized.");
-
-            MainAppWindow.Activate();
-            Log("MainWindow activated.");
-
-            AppHost.StartAsync().ContinueWith(t =>
-            {
-                if (t.IsFaulted && t.Exception != null)
+                Log("AppHost started.");
+                MainAppWindow = new MainWindow();
+                Log("MainWindow instantiated.");
+                bool closePending = false;
+                bool shutdownFinished = false;
+                MainAppWindow.AppWindow.Closing += async (_, closingArgs) =>
                 {
-                    Log($"[AppHost] Background StartAsync failed: {t.Exception.Flatten()}");
-                }
-            }, System.Threading.Tasks.TaskScheduler.Default);
-            Log("AppHost.StartAsync dispatched.");
-
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(MainAppWindow);
-            MainWindowHandle = hwnd;
-            var tray = GetService<ITrayService>();
-            tray.Initialize(hwnd);
-            Log("System Tray service initialized.");
-
-            var settings = GetService<IAppSettingsService>();
-            if (settings.AutoStartP2pEngine)
-            {
-                var p2p = GetService<IP2pSyncService>();
-                p2p.StartAsync().ContinueWith(t =>
-                {
-                    if (t.IsFaulted && t.Exception != null)
+                    if (shutdownFinished) return;
+                    closingArgs.Cancel = true;
+                    if (closePending) return;
+                    closePending = true;
+                    LogSafely("MainWindow closing requested; waiting for graceful shutdown.");
+                    try { await ShutdownAsync(); LogSafely("Application shutdown completed."); }
+                    catch (Exception ex) { LogSafely($"Application shutdown failed: {ex}"); Environment.ExitCode = 1; }
+                    finally
                     {
-                        Log($"[P2P] Background StartAsync failed: {t.Exception.Flatten()}");
+                        shutdownFinished = true;
+                        try { MainAppWindow?.Close(); }
+                        catch (Exception ex)
+                        {
+                            LogSafely($"MainWindow close after shutdown failed: {ex}");
+                            Environment.ExitCode = 1;
+                            Exit();
+                        }
                     }
-                }, System.Threading.Tasks.TaskScheduler.Default);
-                Log("P2P background sync service auto-started on launch.");
-            }
+                };
+                MainAppWindow.Closed += (_, _) => LogSafely("MainWindow.Closed triggered after shutdown.");
+
+                GetService<IThemeService>().Initialize(MainAppWindow);
+                Log("ThemeService initialized.");
+
+                MainWindowHandle = WinRT.Interop.WindowNative.GetWindowHandle(MainAppWindow);
+                var tray = GetService<ITrayService>();
+                _lifecycle.TrackTray(tray);
+                tray.Initialize(MainWindowHandle);
+                Log("System Tray initialization attempted (optional).");
+
+                if (GetService<IAppSettingsService>().AutoStartP2pEngine)
+                {
+                    if (await _lifecycle.StartOptionalP2pAsync(() => GetService<IP2pSyncService>()))
+                        Log("P2P auto-start completed.");
+                    else
+                        LogSafely($"P2P auto-start unavailable; shell startup continues: {_lifecycle.LastOptionalP2pStartupError}");
+                }
+            }, () =>
+            {
+                MainAppWindow!.Activate();
+                LogSafely("MainWindow activated.");
+            });
         }
         catch (Exception ex)
         {
-            Log($"OnLaunched exception: {ex}");
-            throw;
+            Environment.ExitCode = 1;
+            LogSafely($"Critical startup failure; window will not be presented: {ex}");
+            try { await ShutdownAsync(); }
+            catch (Exception shutdownEx) { LogSafely($"Startup cleanup failed: {shutdownEx}"); }
+            Exit();
         }
     }
 }

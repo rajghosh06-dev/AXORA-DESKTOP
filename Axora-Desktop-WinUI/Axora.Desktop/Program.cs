@@ -23,7 +23,6 @@ public static class Program
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (sender, e) =>
         {
             Log($"[TaskScheduler] UnobservedTaskException: {e.Exception.Flatten()}");
-            e.SetObserved();
         };
 
         try
@@ -133,12 +132,15 @@ public static class Program
         {
             try
             {
-                App.ShutdownAsync().GetAwaiter().GetResult();
+                // Fatal paths can reach this fallback after the UI dispatcher has
+                // stopped; never wait forever for a continuation it cannot pump.
+                App.ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult();
                 Log("Program.Main shutdown completed.");
             }
             catch (Exception ex)
             {
                 Log($"Shutdown exception in Program.Main: {ex}");
+                Environment.ExitCode = 1;
             }
         }
     }

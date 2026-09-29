@@ -18,6 +18,13 @@ public sealed partial class MobileLinkPage : Page
     {
         InitializeComponent();
         DataContext = this;
+        Loaded += OnLoaded;
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        // Read-only refresh; AppLifecycle, not navigation, owns autostart.
+        await ViewModel.RefreshServerStateAsync();
     }
 
     private void Disconnect_Click(object sender, RoutedEventArgs e)

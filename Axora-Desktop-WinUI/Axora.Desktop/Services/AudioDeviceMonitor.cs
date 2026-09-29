@@ -22,6 +22,7 @@ public sealed class AudioDeviceMonitor : IAudioDeviceMonitor
     private string? _defaultDeviceName;
     private AudioCaptureHealth _currentHealth = AudioCaptureHealth.Healthy;
     private DeviceWatcher? _deviceWatcher;
+    private int _disposed;
 
     public bool HasMicrophone => _hasMicrophone;
     public bool IsPermissionGranted => _isPermissionGranted;
@@ -41,9 +42,9 @@ public sealed class AudioDeviceMonitor : IAudioDeviceMonitor
         try
         {
             _deviceWatcher = DeviceInformation.CreateWatcher(DeviceClass.AudioCapture);
-            _deviceWatcher.Added += (_, _) => _ = RefreshStatusAsync();
-            _deviceWatcher.Removed += (_, _) => _ = RefreshStatusAsync();
-            _deviceWatcher.Updated += (_, _) => _ = RefreshStatusAsync();
+            _deviceWatcher.Added += OnDeviceAdded;
+            _deviceWatcher.Removed += OnDeviceRemoved;
+            _deviceWatcher.Updated += OnDeviceUpdated;
             _deviceWatcher.Start();
         }
         catch (Exception ex)
@@ -52,11 +53,21 @@ public sealed class AudioDeviceMonitor : IAudioDeviceMonitor
         }
     }
 
+    private void OnDeviceAdded(DeviceWatcher sender, DeviceInformation args) => QueueRefresh();
+    private void OnDeviceRemoved(DeviceWatcher sender, DeviceInformationUpdate args) => QueueRefresh();
+    private void OnDeviceUpdated(DeviceWatcher sender, DeviceInformationUpdate args) => QueueRefresh();
+    private void QueueRefresh()
+    {
+        if (Volatile.Read(ref _disposed) == 0) _ = RefreshStatusAsync();
+    }
+
     public async Task RefreshStatusAsync(CancellationToken ct = default)
     {
+        if (Volatile.Read(ref _disposed) != 0) return;
         await _refreshLock.WaitAsync(ct);
         try
         {
+            if (Volatile.Read(ref _disposed) != 0) return;
             try
             {
                 var devices = await DeviceInformation.FindAllAsync(DeviceClass.AudioCapture);
@@ -96,7 +107,8 @@ public sealed class AudioDeviceMonitor : IAudioDeviceMonitor
                 _logger?.LogWarning(ex, "Unexpected error inspecting audio capture devices.");
             }
 
-            DeviceStatusChanged?.Invoke(this, new AudioDeviceStatusChangedEventArgs(_currentHealth, _defaultDeviceName));
+            if (Volatile.Read(ref _disposed) == 0)
+                DeviceStatusChanged?.Invoke(this, new AudioDeviceStatusChangedEventArgs(_currentHealth, _defaultDeviceName));
         }
         finally
         {
@@ -106,10 +118,14 @@ public sealed class AudioDeviceMonitor : IAudioDeviceMonitor
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         try
         {
             if (_deviceWatcher != null)
             {
+                _deviceWatcher.Added -= OnDeviceAdded;
+                _deviceWatcher.Removed -= OnDeviceRemoved;
+                _deviceWatcher.Updated -= OnDeviceUpdated;
                 _deviceWatcher.Stop();
                 _deviceWatcher = null;
             }
@@ -118,6 +134,7 @@ public sealed class AudioDeviceMonitor : IAudioDeviceMonitor
         {
             _logger?.LogWarning(ex, "Error stopping DeviceWatcher.");
         }
-        _refreshLock.Dispose();
+        // An in-flight WinRT device query may still hold this managed semaphore.
+        // Disposing it here would race its finally/release path.
     }
 }

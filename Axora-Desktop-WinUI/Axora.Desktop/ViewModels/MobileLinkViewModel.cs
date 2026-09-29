@@ -33,7 +33,9 @@ public sealed partial class MobileLinkViewModel : ObservableObject, IDisposable
         _p2pService.DeviceDisconnected += OnDeviceDisconnected;
         _p2pService.FileReceived += OnFileReceived;
 
-        _ = EnsureServerStartedAsync();
+        // AppLifecycle is the sole automatic P2P startup owner. Navigation
+        // observes its result; only the existing Restart command starts here.
+        RefreshServerState();
     }
 
     [ObservableProperty]
@@ -46,12 +48,33 @@ public sealed partial class MobileLinkViewModel : ObservableObject, IDisposable
     [ObservableProperty] private Microsoft.UI.Xaml.Media.ImageSource? _qrCodeBitmap;
     [ObservableProperty] private string _serverIp = "192.168.1.100";
     [ObservableProperty] private string _serverPort = "5050";
-    [ObservableProperty] private string _statusMessage = "P2P engine active · Scan QR code on Axora Mobile to pair";
-    [ObservableProperty] private bool _isServerRunning = true;
+    [ObservableProperty] private string _statusMessage = "P2P engine inactive";
+    [ObservableProperty] private bool _isServerRunning;
     [ObservableProperty] private string _transferFeedback = string.Empty;
 
     public ObservableCollection<AxoraDevice> PairedDevices { get; } = [];
     public ObservableCollection<QuickDropItem> ReceivedFiles => _downloadManager.Transfers;
+
+    public void RefreshServerState()
+    {
+        IsServerRunning = _p2pService.IsRunning;
+        PairingQrData = IsServerRunning ? _p2pService.PairingQrJson : string.Empty;
+        if (!IsServerRunning) QrCodeBitmap = null;
+        StatusMessage = IsServerRunning
+            ? "P2P engine active · Scan QR code on Axora Mobile to pair"
+            : "P2P engine inactive · Use Restart to start pairing";
+    }
+
+    public async Task RefreshServerStateAsync()
+    {
+        RefreshServerState();
+        if (!IsServerRunning) return;
+        var pairingData = PairingQrData;
+        var bitmap = await Helpers.QrCodeHelper.GenerateQrCodeBitmapAsync(pairingData);
+        if (_p2pService.IsRunning && _p2pService.PairingQrJson == pairingData)
+            QrCodeBitmap = bitmap;
+        else RefreshServerState();
+    }
 
     public async Task EnsureServerStartedAsync()
     {
@@ -66,7 +89,13 @@ public sealed partial class MobileLinkViewModel : ObservableObject, IDisposable
             if (PairedDevices.Count == 0)
                 PairedDevices.Add(new AxoraDevice { DisplayName = "Pixel 9 Pro (Axora Mobile)", IpAddress = "192.168.1.142", Port = 5050, IsConnected = true });
         }
-        catch (Exception ex) { StatusMessage = $"P2P notice: {ex.Message}"; }
+        catch (Exception ex)
+        {
+            IsServerRunning = false;
+            PairingQrData = string.Empty;
+            QrCodeBitmap = null;
+            StatusMessage = $"P2P unavailable: {ex.Message}";
+        }
     }
 
     [RelayCommand]
