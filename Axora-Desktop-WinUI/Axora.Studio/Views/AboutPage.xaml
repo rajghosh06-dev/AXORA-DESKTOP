@@ -1,0 +1,15 @@
+<Page x:Class="Axora.Studio.Views.AboutPage"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <ScrollViewer>
+  <StackPanel Spacing="16" MaxWidth="680" HorizontalAlignment="Left">
+   <TextBlock Text="AXORA Studio" Style="{ThemeResource TitleLargeTextBlockStyle}" />
+   <TextBlock Text="Study • Create • Analyze • Review" TextWrapping="Wrap" />
+   <TextBlock Text="{x:Bind Identity}" TextWrapping="Wrap" />
+   <TextBlock Text="{x:Bind BuildVersion}" TextWrapping="Wrap" />
+   <TextBlock Text="Host bootstrap • H0" Style="{ThemeResource SubtitleTextBlockStyle}" />
+   <TextBlock Text="Independent WinUI host, isolated settings, and graceful lifecycle. This build does not claim feature parity or release readiness."
+    TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+  </StackPanel>
+ </ScrollViewer>
+</Page>

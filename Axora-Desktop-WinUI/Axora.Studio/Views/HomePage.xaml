@@ -1,0 +1,22 @@
+<Page x:Class="Axora.Studio.Views.HomePage"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <ScrollViewer>
+  <StackPanel Spacing="24" MaxWidth="760" HorizontalAlignment="Left">
+   <StackPanel Spacing="8">
+    <TextBlock Text="AXORA Studio" Style="{ThemeResource TitleLargeTextBlockStyle}" TextWrapping="Wrap" />
+    <TextBlock Text="Study • Create • Analyze • Review" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+   </StackPanel>
+   <Border Padding="24" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+    <StackPanel Spacing="12">
+     <TextBlock Text="A new foundation" Style="{ThemeResource TitleTextBlockStyle}" TextWrapping="Wrap" />
+     <TextBlock Text="This is the independent Studio host foundation. No study or creation features have migrated yet."
+      TextWrapping="Wrap" />
+     <TextBlock Text="Explore Settings to choose a theme, or About for this build's identity. Your existing AXORA Desktop remains the reference application."
+      TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+    </StackPanel>
+   </Border>
+  </StackPanel>
+ </ScrollViewer>
+</Page>

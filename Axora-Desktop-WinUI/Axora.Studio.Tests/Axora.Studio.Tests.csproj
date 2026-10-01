@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup>
+  <OutputType>Exe</OutputType>
+  <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
+  <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+  <Platforms>x64</Platforms>
+  <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  <WindowsPackageType>None</WindowsPackageType>
+  <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  <Nullable>enable</Nullable>
+  <ImplicitUsings>enable</ImplicitUsings>
+ </PropertyGroup>
+ <ItemGroup>
+  <ProjectReference Include="..\Axora.Studio\Axora.Studio.csproj" />
+  <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250228001" />
+  <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
+ </ItemGroup>
+</Project>

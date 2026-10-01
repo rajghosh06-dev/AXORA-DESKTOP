@@ -1,0 +1,8 @@
+{
+  "ThemeIndex": 0,
+  "AutoStartP2pEngine": false,
+  "BackgroundQuickDropListen": false,
+  "DownloadDirectory": ".",
+  "IsVoiceNavigationEnabled": false,
+  "IsTelemetryEnabled": false
+}

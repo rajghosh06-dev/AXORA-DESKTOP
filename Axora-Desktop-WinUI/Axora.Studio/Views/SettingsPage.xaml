@@ -1,0 +1,19 @@
+<Page x:Class="Axora.Studio.Views.SettingsPage"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <ScrollViewer>
+  <StackPanel Spacing="20" MaxWidth="680" HorizontalAlignment="Left">
+   <TextBlock Text="Appearance" Style="{ThemeResource TitleTextBlockStyle}" />
+   <TextBlock Text="Studio owns its theme preference independently. Native Windows accent and contrast resources are used."
+    TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+   <ComboBox Header="Theme" ItemsSource="{x:Bind ViewModel.Themes}"
+    IsEnabled="{x:Bind ViewModel.CanEdit, Mode=OneWay}"
+    SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}" MinWidth="220" AutomationProperties.Name="Studio theme" />
+   <Button Content="Save" Command="{x:Bind ViewModel.SaveCommand}" AutomationProperties.Name="Save Studio settings" />
+   <ProgressRing IsActive="{x:Bind ViewModel.SaveCommand.IsRunning, Mode=OneWay}" Width="20" Height="20"
+    HorizontalAlignment="Left" AutomationProperties.Name="Saving Studio settings" />
+   <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}" TextWrapping="Wrap"
+    AutomationProperties.Name="Settings status" AutomationProperties.LiveSetting="Polite" />
+  </StackPanel>
+ </ScrollViewer>
+</Page>
