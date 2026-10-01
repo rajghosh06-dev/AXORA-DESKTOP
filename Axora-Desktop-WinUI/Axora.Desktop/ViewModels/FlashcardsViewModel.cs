@@ -7,8 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.UI.Dispatching;
 using Axora.Desktop.Models;
+using Axora.Desktop.Models.Voice;
 using Axora.Desktop.Services.Contracts;
 
 namespace Axora.Desktop.ViewModels;
@@ -19,8 +19,10 @@ namespace Axora.Desktop.ViewModels;
 /// </summary>
 public sealed partial class FlashcardsViewModel : ObservableObject, IDisposable
 {
-    private readonly ISpeechSynthesisService _speechService;
-    private readonly DispatcherQueue _dispatcher;
+    private readonly IVoiceCoordinator _voiceCoordinator;
+    private readonly object _speechRequestGate = new();
+    private CancellationTokenSource? _speechRequest;
+    private int _disposed;
 
     [ObservableProperty] private FlashcardDeck? _activeDeck;
     [ObservableProperty] private FlashCard? _currentCard;
@@ -33,10 +35,9 @@ public sealed partial class FlashcardsViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<FlashcardDeck> Decks { get; } = [];
 
-    public FlashcardsViewModel(ISpeechSynthesisService speechService)
+    public FlashcardsViewModel(IVoiceCoordinator voiceCoordinator)
     {
-        _speechService = speechService;
-        _dispatcher = DispatcherQueue.GetForCurrentThread();
+        _voiceCoordinator = voiceCoordinator;
 
         var sdkDeck = new FlashcardDeck
         {
@@ -77,11 +78,39 @@ public sealed partial class FlashcardsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public async Task SpeakCurrentCardAsync()
     {
-        if (CurrentCard is null) return;
+        if (CurrentCard is null || Volatile.Read(ref _disposed) != 0) return;
         string text = IsCardFlipped ? CurrentCard.Back : CurrentCard.Front;
-        IsSpeaking = true;
-        try { await _speechService.SpeakTextAsync(text); }
-        finally { IsSpeaking = false; }
+        var request = new CancellationTokenSource();
+        CancellationToken token = request.Token;
+        lock (_speechRequestGate)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                request.Dispose();
+                return;
+            }
+            _speechRequest?.Cancel();
+            _speechRequest = request;
+            IsSpeaking = true;
+        }
+        try
+        {
+            SpeechPlaybackResult result = await _voiceCoordinator.RequestSpeakAsync(text, ct: token);
+            if (result is SpeechPlaybackResult.Unavailable or SpeechPlaybackResult.Failed)
+                ExportStatus = "Read aloud is unavailable; flashcard study remains available.";
+        }
+        finally
+        {
+            lock (_speechRequestGate)
+            {
+                if (ReferenceEquals(_speechRequest, request))
+                {
+                    _speechRequest = null;
+                    IsSpeaking = false;
+                }
+            }
+            request.Dispose();
+        }
     }
 
     [RelayCommand]
@@ -259,5 +288,14 @@ public sealed partial class FlashcardsViewModel : ObservableObject, IDisposable
         ActiveDeck.NotifyStatsChanged();
     }
 
-    public void Dispose() => _speechService.Stop();
+    public void CancelSpeechRequest()
+    {
+        lock (_speechRequestGate) _speechRequest?.Cancel();
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        CancelSpeechRequest();
+    }
 }

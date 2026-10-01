@@ -20,13 +20,6 @@ public sealed class VoiceCommandRouter : IVoiceCommandRouter
     private readonly ILogger<VoiceCommandRouter>? _logger;
     private readonly List<VoiceCommandRegistration> _commands = new();
     private readonly object _lock = new();
-    private bool _isListening;
-
-    public bool IsListening
-    {
-        get { lock (_lock) return _isListening; }
-        private set { lock (_lock) _isListening = value; }
-    }
 
     public IReadOnlyList<VoiceCommandRegistration> RegisteredCommands
     {
@@ -159,23 +152,8 @@ public sealed class VoiceCommandRouter : IVoiceCommandRouter
         }
     }
 
-    public Task StartListeningAsync(CancellationToken ct = default)
-    {
-        IsListening = true;
-        _logger?.LogInformation("Voice command router listening started.");
-        return Task.CompletedTask;
-    }
-
-    public Task StopListeningAsync()
-    {
-        IsListening = false;
-        _logger?.LogInformation("Voice command router listening stopped.");
-        return Task.CompletedTask;
-    }
-
     public void Dispose()
     {
-        StopListeningAsync();
         lock (_lock)
         {
             _commands.Clear();

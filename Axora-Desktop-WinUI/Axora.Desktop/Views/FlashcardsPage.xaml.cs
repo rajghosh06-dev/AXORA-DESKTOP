@@ -30,6 +30,7 @@ public sealed partial class FlashcardsPage : Page
     private void FlashcardsPage_Unloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        ViewModel.CancelSpeechRequest();
     }
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

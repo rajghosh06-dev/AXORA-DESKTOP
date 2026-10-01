@@ -19,7 +19,8 @@ public static class DispatcherHelper
         }
         else
         {
-            dispatcher.TryEnqueue(DispatcherQueuePriority.Normal, () => action());
+            if (!dispatcher.TryEnqueue(DispatcherQueuePriority.Normal, () => action()))
+                throw new InvalidOperationException("The WinUI dispatcher rejected the requested action.");
         }
     }
 
@@ -35,8 +36,21 @@ public static class DispatcherHelper
             return Task.CompletedTask;
         }
 
+        return RunWithEnqueueAsync(
+            callback => dispatcher.TryEnqueue(DispatcherQueuePriority.Normal, () => callback()),
+            action);
+    }
+
+    /// <summary>
+    /// Testable enqueue seam used by the DispatcherQueue extension. A rejected enqueue
+    /// is represented by a faulted task rather than an operation that never completes.
+    /// </summary>
+    public static Task RunWithEnqueueAsync(Func<Action, bool> tryEnqueue, Action action)
+    {
+        ArgumentNullException.ThrowIfNull(tryEnqueue);
+        ArgumentNullException.ThrowIfNull(action);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        dispatcher.TryEnqueue(DispatcherQueuePriority.Normal, () =>
+        bool enqueued = tryEnqueue(() =>
         {
             try
             {
@@ -48,6 +62,8 @@ public static class DispatcherHelper
                 tcs.SetException(ex);
             }
         });
+        if (!enqueued)
+            tcs.TrySetException(new InvalidOperationException("The WinUI dispatcher rejected the requested action."));
         return tcs.Task;
     }
 
@@ -61,7 +77,7 @@ public static class DispatcherHelper
             return asyncAction();
 
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        dispatcher.TryEnqueue(DispatcherQueuePriority.Normal, async () =>
+        bool enqueued = dispatcher.TryEnqueue(DispatcherQueuePriority.Normal, async () =>
         {
             try
             {
@@ -73,6 +89,8 @@ public static class DispatcherHelper
                 tcs.SetException(ex);
             }
         });
+        if (!enqueued)
+            tcs.TrySetException(new InvalidOperationException("The WinUI dispatcher rejected the requested asynchronous action."));
         return tcs.Task;
     }
 }

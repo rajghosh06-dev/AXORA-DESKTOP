@@ -24,6 +24,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IAppSettingsService _settingsService;
     private readonly IThemeService? _themeService;
     private readonly ISpeechSynthesisService? _speechService;
+    private readonly IVoiceCoordinator? _voiceCoordinator;
     private readonly IAudioDeviceMonitor? _deviceMonitor;
     private bool _isLoading; // Guard to suppress IsDirty during LoadSettings()
 
@@ -57,12 +58,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         IAppSettingsService settingsService,
         IThemeService? themeService = null,
         ISpeechSynthesisService? speechService = null,
-        IAudioDeviceMonitor? deviceMonitor = null)
+        IAudioDeviceMonitor? deviceMonitor = null,
+        IVoiceCoordinator? voiceCoordinator = null)
     {
         _settingsService = settingsService;
         _themeService = themeService;
         _speechService = speechService;
         _deviceMonitor = deviceMonitor;
+        _voiceCoordinator = voiceCoordinator;
         _appVersion = GetAppVersion();
 
         if (_deviceMonitor != null)
@@ -201,13 +204,19 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     public async Task TestSpeechAsync()
     {
-        if (_speechService != null)
+        if (_voiceCoordinator != null)
         {
             if (!string.IsNullOrEmpty(SelectedVoiceId))
             {
-                _speechService.SetVoice(SelectedVoiceId);
+                _speechService?.SetVoice(SelectedVoiceId);
             }
-            await _speechService.SpeakTextAsync("Hello from Axora Desktop speech synthesis.", pitch: SpeechPitch, rate: SpeechRate);
+            SpeechPlaybackResult result = await _voiceCoordinator.RequestSpeakAsync(
+                "Hello from Axora Desktop speech synthesis.",
+                pitch: SpeechPitch,
+                rate: SpeechRate);
+            SaveStatus = result == SpeechPlaybackResult.Completed
+                ? "Speech test completed."
+                : $"Speech test {result.ToString().ToLowerInvariant()}; settings remain available.";
         }
     }
 

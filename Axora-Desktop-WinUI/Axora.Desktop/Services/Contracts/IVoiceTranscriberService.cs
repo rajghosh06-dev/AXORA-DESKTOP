@@ -11,8 +11,9 @@ public interface IVoiceTranscriberService : IDisposable
     AudioCaptureHealth DeviceHealth { get; }
 
     Task<bool> CheckPrerequisitesAsync(CancellationToken ct = default);
-    Task StartDictationAsync(Action<string> onTextRecognized, CancellationToken ct = default);
-    Task StartDictationAsync(Action<TranscriptionChunk> onChunkRecognized, CancellationToken ct = default);
+    Task<VoiceRecognitionStartResult> StartDictationAsync(
+        Action<TranscriptionChunk> onChunkRecognized,
+        CancellationToken ct = default);
     Task StopDictationAsync();
 
     event EventHandler<VoiceTranscriberStateChangedEventArgs>? StateChanged;

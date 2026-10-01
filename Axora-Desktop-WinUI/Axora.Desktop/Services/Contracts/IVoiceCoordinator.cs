@@ -14,14 +14,16 @@ public interface IVoiceCoordinator : IDisposable
 {
     VoiceSessionState CurrentState { get; }
     bool IsVoiceNavigationEnabled { get; set; }
+    /// <summary>Live command-recognition intent, including speech suspension; independent of saved preference.</summary>
+    bool IsVoiceNavigationDesired { get; }
     AudioCaptureHealth CaptureHealth { get; }
     TimeSpan AcousticDebounceInterval { get; set; }
 
-    Task<bool> RequestStartDictationAsync(Action<string> onFormattedChunk, CancellationToken ct = default);
+    Task<VoiceRecognitionStartResult> RequestStartDictationAsync(Action<string> onFormattedChunk, CancellationToken ct = default);
     Task RequestStopDictationAsync();
-    Task<bool> RequestSpeakAsync(string text, double? pitch = null, double? rate = null, CancellationToken ct = default);
+    Task<SpeechPlaybackResult> RequestSpeakAsync(string text, double? pitch = null, double? rate = null, CancellationToken ct = default);
     void RequestStopSpeech();
-    Task<bool> StartVoiceNavigationAsync(CancellationToken ct = default);
+    Task<VoiceRecognitionStartResult> StartVoiceNavigationAsync(CancellationToken ct = default);
     Task StopVoiceNavigationAsync();
     Task StopAsync();
 

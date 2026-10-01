@@ -69,6 +69,7 @@ public sealed partial class App : Application
                 services.AddSingleton<IDocumentProcessorService, DocumentProcessorService>();
                 services.AddSingleton<IBatchImageProcessorService, BatchImageProcessorService>();
                 services.AddSingleton<IIntelligentCompressorService, IntelligentCompressorService>();
+                services.AddSingleton<ISpeechPlaybackBackend, MediaPlayerSpeechPlaybackBackend>();
                 services.AddSingleton<ISpeechSynthesisService, SpeechSynthesisService>();
                 services.AddSingleton<IVoiceTranscriberService, VoiceTranscriberService>();
                 services.AddSingleton<IVoiceTextFormatter, VoiceTextFormatter>();

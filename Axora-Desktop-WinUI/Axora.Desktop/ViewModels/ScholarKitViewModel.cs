@@ -29,14 +29,15 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     private readonly IOcrService _ocrService;
     private readonly IPdfExtractionService _pdfService;
     private readonly IDocumentProcessorService _docProcessor;
-    private readonly IVoiceTranscriberService _voiceTranscriber;
     private readonly IDocumentChatService _documentChat;
-    private readonly ISpeechSynthesisService _speechService;
     private readonly IScannerService _scannerService;
     private readonly IAppSettingsService _settings;
     private readonly IScholarLibraryService? _scholarLibrary;
     private readonly IScholarSynthesisEngine? _synthesisEngine;
     private readonly IVoiceCoordinator? _voiceCoordinator;
+    private readonly object _speechRequestGate = new();
+    private CancellationTokenSource? _speechRequest;
+    private int _disposed;
     private readonly DispatcherQueue? _dispatcher;
     private DateTime _currentSessionCreatedAt = DateTime.UtcNow;
     private bool _isSuppressingChangeTracking;
@@ -62,9 +63,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         _ocrService = ocrService;
         _pdfService = pdfService;
         _docProcessor = docProcessor;
-        _voiceTranscriber = voiceTranscriber;
         _documentChat = documentChat;
-        _speechService = speechService;
         _scannerService = scannerService;
         _settings = settings;
         _scholarLibrary = scholarLibrary;
@@ -439,10 +438,6 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
             {
                 await _voiceCoordinator.RequestStopDictationAsync();
             }
-            else
-            {
-                await _voiceTranscriber.StopDictationAsync();
-            }
             IsDictating = false;
             StatusMessage = "Voice dictation stopped.";
         }
@@ -470,8 +465,8 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
 
             if (_voiceCoordinator != null)
             {
-                bool started = await _voiceCoordinator.RequestStartDictationAsync(onChunkReceived);
-                if (!started)
+                VoiceRecognitionStartResult started = await _voiceCoordinator.RequestStartDictationAsync(onChunkReceived);
+                if (started != VoiceRecognitionStartResult.Started)
                 {
                     IsDictating = false;
                     StatusMessage = "Microphone unavailable or permission denied.";
@@ -479,8 +474,43 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
             }
             else
             {
-                await _voiceTranscriber.StartDictationAsync(onChunkReceived);
+                IsDictating = false;
+                StatusMessage = "Voice dictation is unavailable without the voice coordinator.";
             }
+        }
+    }
+
+    private CancellationTokenSource? BeginSpeechRequest(out CancellationToken token)
+    {
+        token = default;
+        lock (_speechRequestGate)
+        {
+            if (Volatile.Read(ref _disposed) != 0 || _voiceCoordinator == null) return null;
+            _speechRequest?.Cancel();
+            var request = new CancellationTokenSource();
+            token = request.Token;
+            return _speechRequest = request;
+        }
+    }
+
+    private void CancelScholarSpeech()
+    {
+        lock (_speechRequestGate)
+        {
+            CancellationTokenSource? request = _speechRequest;
+            _speechRequest = null;
+            request?.Cancel();
+        }
+    }
+
+    private bool CompleteScholarSpeech(CancellationTokenSource request)
+    {
+        lock (_speechRequestGate)
+        {
+            bool current = ReferenceEquals(_speechRequest, request);
+            if (current) _speechRequest = null;
+            request.Dispose();
+            return current && Volatile.Read(ref _disposed) == 0;
         }
     }
 
@@ -489,14 +519,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     {
         if (IsSpeaking)
         {
-            if (_voiceCoordinator != null)
-            {
-                _voiceCoordinator.RequestStopSpeech();
-            }
-            else
-            {
-                _speechService.Stop();
-            }
+            CancelScholarSpeech();
             IsSpeaking = false;
             StatusMessage = "Speech playback stopped.";
         }
@@ -508,24 +531,27 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
                 return;
             }
 
+            CancellationTokenSource? request = BeginSpeechRequest(out CancellationToken token);
+            if (request == null)
+            {
+                StatusMessage = "Read aloud is unavailable without the voice coordinator.";
+                return;
+            }
             IsSpeaking = true;
             StatusMessage = "🔊 Reading document text aloud via system-provided speech voices…";
 
             try
             {
-                if (_voiceCoordinator != null)
-                {
-                    await _voiceCoordinator.RequestSpeakAsync(OcrResultText, pitch: SpeechPitch, rate: SpeechRate);
-                }
-                else
-                {
-                    await _speechService.SpeakTextAsync(OcrResultText, pitch: SpeechPitch, rate: SpeechRate);
-                }
+                await _voiceCoordinator!.RequestSpeakAsync(OcrResultText,
+                    pitch: SpeechPitch, rate: SpeechRate, ct: token);
             }
             finally
             {
-                IsSpeaking = false;
-                StatusMessage = "Read aloud complete.";
+                if (CompleteScholarSpeech(request))
+                {
+                    IsSpeaking = false;
+                    StatusMessage = "Read aloud complete.";
+                }
             }
         }
     }
@@ -537,14 +563,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
 
         if (message.IsSpeaking)
         {
-            if (_voiceCoordinator != null)
-            {
-                _voiceCoordinator.RequestStopSpeech();
-            }
-            else
-            {
-                _speechService.Stop();
-            }
+            CancelScholarSpeech();
             message.IsSpeaking = false;
             return;
         }
@@ -552,21 +571,18 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         // Reset speaking state on all messages
         foreach (var msg in ChatMessages) msg.IsSpeaking = false;
 
+        CancellationTokenSource? request = BeginSpeechRequest(out CancellationToken token);
+        if (request == null) return;
+        IsSpeaking = false;
         message.IsSpeaking = true;
         try
         {
-            if (_voiceCoordinator != null)
-            {
-                await _voiceCoordinator.RequestSpeakAsync(message.Message, pitch: SpeechPitch, rate: SpeechRate);
-            }
-            else
-            {
-                await _speechService.SpeakTextAsync(message.Message, pitch: SpeechPitch, rate: SpeechRate);
-            }
+            await _voiceCoordinator!.RequestSpeakAsync(message.Message,
+                pitch: SpeechPitch, rate: SpeechRate, ct: token);
         }
         finally
         {
-            message.IsSpeaking = false;
+            if (CompleteScholarSpeech(request)) message.IsSpeaking = false;
         }
     }
 
@@ -1294,10 +1310,7 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ClearResults()
     {
-        if (_voiceCoordinator != null)
-            _voiceCoordinator.RequestStopSpeech();
-        else
-            _speechService.Stop();
+        CancelScholarSpeech();
 
         OcrResultText = string.Empty;
         MarkdownText = string.Empty;
@@ -1336,26 +1349,15 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        CancelScholarSpeech();
         if (_voiceCoordinator != null)
         {
-            _voiceCoordinator.RequestStopSpeech();
             if (_voiceCoordinator.CurrentState == VoiceSessionState.Dictating)
             {
                 _ = Task.Run(async () =>
                 {
                     try { await _voiceCoordinator.RequestStopDictationAsync(); }
-                    catch { /* Swallow */ }
-                });
-            }
-        }
-        else
-        {
-            _speechService.Stop();
-            if (_voiceTranscriber.IsRecording)
-            {
-                _ = Task.Run(async () =>
-                {
-                    try { await _voiceTranscriber.StopDictationAsync(); }
                     catch { /* Swallow */ }
                 });
             }

@@ -258,18 +258,18 @@ public partial class Program
             };
 
             List<string> chunks = new();
-            bool started = await coordinator.RequestStartDictationAsync(chunk => chunks.Add(chunk));
-            Assert(started, "T2-03a: RequestStartDictationAsync succeeds");
+            VoiceRecognitionStartResult started = await coordinator.RequestStartDictationAsync(chunk => chunks.Add(chunk));
+            Assert(started == VoiceRecognitionStartResult.Started, "T2-03a: RequestStartDictationAsync succeeds truthfully");
             Assert(coordinator.CurrentState == VoiceSessionState.Dictating, "T2-03b: State transitions to Dictating");
             Assert(stateChangedFired && capturedState == VoiceSessionState.Dictating, "T2-03c: StateChanged event fired with Dictating");
         }
 
         // 3. Mutual Exclusion - Speech Playback Pauses / Stops Dictation (R-VOICE-04)
         {
-            bool speakSucceeded = await coordinator.RequestSpeakAsync("This is a synthesized test prompt.");
-            Assert(speakSucceeded, "T2-04a: RequestSpeakAsync initiates successfully");
-            Assert(coordinator.CurrentState == VoiceSessionState.Synthesizing, "T2-04b: State transitions to Synthesizing");
-            Assert(!mockTranscriber.IsRecording, "T2-04c: Transcriber is NOT recording while speech playback is active (Mutual Exclusion)");
+            SpeechPlaybackResult speechResult = await coordinator.RequestSpeakAsync("This is a synthesized test prompt.");
+            Assert(speechResult == SpeechPlaybackResult.Completed, "T2-04a: RequestSpeakAsync returns a terminal Completed result");
+            Assert(coordinator.CurrentState == VoiceSessionState.Dictating, "T2-04b: Desired dictation resumes after terminal speech completion");
+            Assert(mockTranscriber.StopCallCount > 0, "T2-04c: Recognition was stopped before coordinated playback");
         }
 
         // 4. Configurable Acoustic Debounce Window (R-VOICE-05)
@@ -278,6 +278,7 @@ public partial class Program
             Assert(coordinator.AcousticDebounceInterval.TotalMilliseconds == 100, "T2-05a: Configurable acoustic debounce property accepted");
 
             coordinator.RequestStopSpeech();
+            await coordinator.RequestStopDictationAsync();
             
             // Allow state machine background transition and debounce
             await Task.Delay(150);
@@ -287,21 +288,21 @@ public partial class Program
 
         // 5. Concurrent Requests Serialization (R-VOICE-17)
         {
-            var tasks = new List<Task<bool>>();
+            var tasks = new List<Task>();
             for (int i = 0; i < 8; i++)
             {
                 int index = i;
                 tasks.Add(Task.Run(async () =>
                 {
                     if (index % 2 == 0)
-                        return await coordinator.RequestStartDictationAsync(_ => { });
+                        await coordinator.RequestStartDictationAsync(_ => { });
                     else
-                        return await coordinator.RequestSpeakAsync($"Concurrency test utterance {index}");
+                        await coordinator.RequestSpeakAsync($"Concurrency test utterance {index}");
                 }));
             }
 
-            var results = await Task.WhenAll(tasks);
-            Assert(results.Length == 8, "T2-06a: 8 parallel coordinator calls executed without deadlocking");
+            await Task.WhenAll(tasks);
+            Assert(tasks.Count == 8 && tasks.All(t => t.IsCompleted), "T2-06a: 8 parallel coordinator calls executed without deadlocking");
             Assert(coordinator.CurrentState == VoiceSessionState.Dictating || coordinator.CurrentState == VoiceSessionState.Synthesizing || coordinator.CurrentState == VoiceSessionState.Idle,
                    "T2-06b: State machine retained consistent valid state during parallel calls");
             
@@ -312,16 +313,16 @@ public partial class Program
         // 6. Permission Denied Graceful Handling (0x80070005) (R-VOICE-06)
         {
             mockTranscriber.SimulatePermissionDenied = true;
-            bool started = await coordinator.RequestStartDictationAsync(_ => { });
-            Assert(!started, "T2-07a: Dictation start rejected when permission is denied");
+            VoiceRecognitionStartResult started = await coordinator.RequestStartDictationAsync(_ => { });
+            Assert(started == VoiceRecognitionStartResult.PermissionDenied, "T2-07a: Dictation reports PermissionDenied truthfully");
             mockTranscriber.SimulatePermissionDenied = false;
         }
 
         // 7. No Microphone Fallback (R-VOICE-07)
         {
             mockAudioMonitor.SetMicrophoneAvailability(false);
-            bool started = await coordinator.RequestStartDictationAsync(_ => { });
-            Assert(!started, "T2-08a: Dictation start rejected when no microphone is connected");
+            VoiceRecognitionStartResult started = await coordinator.RequestStartDictationAsync(_ => { });
+            Assert(started == VoiceRecognitionStartResult.Unavailable, "T2-08a: Dictation reports Unavailable when no microphone is connected");
             mockAudioMonitor.SetMicrophoneAvailability(true);
         }
 
@@ -464,7 +465,7 @@ public partial class Program
                 .ToList();
 
             var transcriber = new VoiceTranscriberService(logger: null);
-            await transcriber.StartDictationAsync((string _) => { });
+            await transcriber.StartDictationAsync(_ => { });
             await Task.Delay(50);
             await transcriber.StopDictationAsync();
 
@@ -484,7 +485,7 @@ public partial class Program
             var transcriberWithLogger = new VoiceTranscriberService(logger);
 
             const string canaryPhrase = "CANARY_CONFIDENTIAL_USER_ACADEMIC_RESEARCH_TEXT_XYZ123";
-            await transcriberWithLogger.StartDictationAsync((string chunk) => { });
+            await transcriberWithLogger.StartDictationAsync(_ => { });
             await Task.Delay(20);
             await transcriberWithLogger.StopDictationAsync();
 
@@ -499,7 +500,7 @@ public partial class Program
             for (int i = 0; i < 15; i++)
             {
                 Console.WriteLine($"[T4-04] iteration={i + 1}/15 stage=start (includes WinRT compile/start-session) timeout=10s");
-                await transcriber.StartDictationAsync((string _) => { }).WaitAsync(TimeSpan.FromSeconds(10));
+                await transcriber.StartDictationAsync(_ => { }).WaitAsync(TimeSpan.FromSeconds(10));
                 Console.WriteLine($"[T4-04] iteration={i + 1}/15 stage=stop timeout=10s");
                 await transcriber.StopDictationAsync().WaitAsync(TimeSpan.FromSeconds(10));
                 Console.WriteLine($"[T4-04] iteration={i + 1}/15 stage=complete");
@@ -759,30 +760,40 @@ public sealed class W4MockTranscriber : IVoiceTranscriberService
     public bool IsRecording { get; private set; }
     public AudioCaptureHealth DeviceHealth { get; set; } = AudioCaptureHealth.Healthy;
     public bool SimulatePermissionDenied { get; set; }
+    public VoiceRecognitionStartResult NextStartResult { get; set; } = VoiceRecognitionStartResult.Started;
+    public int StartCallCount { get; private set; }
+    public int StopCallCount { get; private set; }
+    private Action<TranscriptionChunk>? _callback;
     public event EventHandler<VoiceTranscriberStateChangedEventArgs>? StateChanged;
 
     public Task<bool> CheckPrerequisitesAsync(CancellationToken ct = default) => Task.FromResult(true);
 
-    public Task StartDictationAsync(Action<string> onTextRecognized, CancellationToken ct = default) =>
-        StartDictationAsync(chunk => onTextRecognized(chunk.FormattedText), ct);
-
-    public Task StartDictationAsync(Action<TranscriptionChunk> onChunkRecognized, CancellationToken ct = default)
+    public Task<VoiceRecognitionStartResult> StartDictationAsync(Action<TranscriptionChunk> onChunkRecognized, CancellationToken ct = default)
     {
+        StartCallCount++;
         if (SimulatePermissionDenied)
         {
             DeviceHealth = AudioCaptureHealth.PermissionDenied;
             StateChanged?.Invoke(this, new VoiceTranscriberStateChangedEventArgs(false, AudioCaptureHealth.PermissionDenied));
-            return Task.FromException(new UnauthorizedAccessException("Microphone access denied (0x80070005)"));
+            return Task.FromResult(VoiceRecognitionStartResult.PermissionDenied);
         }
 
+        if (ct.IsCancellationRequested) return Task.FromResult(VoiceRecognitionStartResult.Canceled);
+        if (NextStartResult != VoiceRecognitionStartResult.Started)
+            return Task.FromResult(NextStartResult);
+        _callback = onChunkRecognized;
         IsRecording = true;
         StateChanged?.Invoke(this, new VoiceTranscriberStateChangedEventArgs(true, DeviceHealth));
-        return Task.CompletedTask;
+        return Task.FromResult(VoiceRecognitionStartResult.Started);
     }
+
+    public void Emit(TranscriptionChunk chunk) => _callback?.Invoke(chunk);
 
     public Task StopDictationAsync()
     {
+        StopCallCount++;
         IsRecording = false;
+        _callback = null;
         StateChanged?.Invoke(this, new VoiceTranscriberStateChangedEventArgs(false, DeviceHealth));
         return Task.CompletedTask;
     }
@@ -811,13 +822,15 @@ public sealed class W4MockSynthesizer : ISpeechSynthesisService
 
     public Task InitializeAsync(CancellationToken ct = default) => Task.CompletedTask;
 
-    public Task SpeakTextAsync(string text, double pitch = 1.0, double rate = 1.0, CancellationToken ct = default)
+    public Task<SpeechPlaybackResult> SpeakTextAsync(string text, double pitch = 1.0, double rate = 1.0, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(text)) return Task.CompletedTask;
+        if (string.IsNullOrWhiteSpace(text)) return Task.FromResult(SpeechPlaybackResult.Completed);
         SpeakCallCount++;
         IsSpeaking = true;
         PlaybackStateChanged?.Invoke(this, new SpeechPlaybackStateChangedEventArgs(true, CurrentVoice?.Id));
-        return Task.CompletedTask;
+        IsSpeaking = false;
+        PlaybackStateChanged?.Invoke(this, new SpeechPlaybackStateChangedEventArgs(false, CurrentVoice?.Id));
+        return Task.FromResult(ct.IsCancellationRequested ? SpeechPlaybackResult.Canceled : SpeechPlaybackResult.Completed);
     }
 
     public void Stop()

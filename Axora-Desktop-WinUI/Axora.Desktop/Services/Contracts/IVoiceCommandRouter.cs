@@ -12,15 +12,11 @@ namespace Axora.Desktop.Services.Contracts;
 /// </summary>
 public interface IVoiceCommandRouter : IDisposable
 {
-    bool IsListening { get; }
     IReadOnlyList<VoiceCommandRegistration> RegisteredCommands { get; }
 
     void RegisterCommand(VoiceCommandRegistration command);
     void UnregisterCommand(string commandId);
     VoiceCommandMatchResult MatchCommand(string spokenPhrase);
     Task<bool> ExecuteCommandAsync(string spokenPhrase, CancellationToken ct = default);
-    Task StartListeningAsync(CancellationToken ct = default);
-    Task StopListeningAsync();
-
     event EventHandler<VoiceCommandExecutedEventArgs>? CommandExecuted;
 }

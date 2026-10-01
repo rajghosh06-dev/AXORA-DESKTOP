@@ -86,6 +86,7 @@ public partial class Program
             "optional DirectML GPU and neural model; lexical fallback available"),
         G("W3-E", "Search service", RunW3_ESearchServiceTests, EvidenceKind.Integration),
         G("W3-F", "Study synthesis", RunW3_FStudySynthesisEngineTests, EvidenceKind.Integration),
+        G("R0-VOICE", "Studio R0 voice and Flashcards remediation", RunStudioR0VoiceFlashcardsTests, EvidenceKind.Integration),
         G("W4-T1", "Voice deterministic", RunW4Tier1_DeterministicLogicTests),
         G("W4-T2", "Voice mocked resilience", RunW4Tier2_MockedCoordinatorResilienceTests, EvidenceKind.Integration),
         G("W4-T3", "Voice host probes", RunW4Tier3_EnvironmentDependentRuntimeTests, EvidenceKind.EnvironmentRuntime, "Windows voice and microphone", TimeSpan.FromMinutes(2)),

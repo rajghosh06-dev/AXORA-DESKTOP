@@ -319,8 +319,8 @@ public partial class Program
         Console.WriteLine(">>> [M4] Flashcards SM-2 & Deck Reactivity Stress Testing <<<");
         Console.ResetColor();
 
-        var mockSpeech = new MockSpeechSynthesisService();
-        var vm = new FlashcardsViewModel(mockSpeech);
+        var mockVoice = new MockVoiceCoordinator();
+        var vm = new FlashcardsViewModel(mockVoice);
 
         // Test 1: Baseline initialization
         Assert(vm.Decks.Count >= 2, "M4.1: Initial decks loaded");
@@ -14731,13 +14731,15 @@ public sealed class MockSpeechSynthesisService : ISpeechSynthesisService
 
     public Task InitializeAsync(CancellationToken ct = default) => Task.CompletedTask;
 
-    public Task SpeakTextAsync(string text, double pitch = 1.0, double rate = 1.0, CancellationToken ct = default)
+    public Task<SpeechPlaybackResult> SpeakTextAsync(string text, double pitch = 1.0, double rate = 1.0, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(text)) return Task.CompletedTask;
+        if (string.IsNullOrWhiteSpace(text)) return Task.FromResult(SpeechPlaybackResult.Completed);
 
         IsSpeaking = true;
         PlaybackStateChanged?.Invoke(this, new SpeechPlaybackStateChangedEventArgs(true, CurrentVoice?.Id));
-        return Task.CompletedTask;
+        IsSpeaking = false;
+        PlaybackStateChanged?.Invoke(this, new SpeechPlaybackStateChangedEventArgs(false, CurrentVoice?.Id));
+        return Task.FromResult(SpeechPlaybackResult.Completed);
     }
 
     public void Stop()
@@ -14761,6 +14763,35 @@ public sealed class MockSpeechSynthesisService : ISpeechSynthesisService
     {
         Stop();
     }
+}
+
+public sealed class MockVoiceCoordinator : IVoiceCoordinator
+{
+    public VoiceSessionState CurrentState { get; private set; } = VoiceSessionState.Idle;
+    public bool IsVoiceNavigationEnabled { get; set; }
+    public bool IsVoiceNavigationDesired => CurrentState == VoiceSessionState.ListeningForCommand;
+    public AudioCaptureHealth CaptureHealth => AudioCaptureHealth.Healthy;
+    public TimeSpan AcousticDebounceInterval { get; set; }
+    public int SpeakCallCount { get; private set; }
+    public int StopSpeechCount { get; private set; }
+    public int DisposeCount { get; private set; }
+    public SpeechPlaybackResult NextSpeechResult { get; set; } = SpeechPlaybackResult.Completed;
+    public event EventHandler<VoiceSessionStateChangedEventArgs>? StateChanged;
+
+    public Task<VoiceRecognitionStartResult> RequestStartDictationAsync(Action<string> callback, CancellationToken ct = default) =>
+        Task.FromResult(VoiceRecognitionStartResult.Started);
+    public Task RequestStopDictationAsync() => Task.CompletedTask;
+    public Task<SpeechPlaybackResult> RequestSpeakAsync(string text, double? pitch = null, double? rate = null, CancellationToken ct = default)
+    {
+        SpeakCallCount++;
+        return Task.FromResult(ct.IsCancellationRequested ? SpeechPlaybackResult.Canceled : NextSpeechResult);
+    }
+    public void RequestStopSpeech() => StopSpeechCount++;
+    public Task<VoiceRecognitionStartResult> StartVoiceNavigationAsync(CancellationToken ct = default) =>
+        Task.FromResult(VoiceRecognitionStartResult.Started);
+    public Task StopVoiceNavigationAsync() => Task.CompletedTask;
+    public Task StopAsync() => Task.CompletedTask;
+    public void Dispose() => DisposeCount++;
 }
 
 public sealed class MockConversionEngine : IConversionEngine
@@ -15031,8 +15062,8 @@ public sealed class DummyVoiceTranscriberService : IVoiceTranscriberService
     public event EventHandler<VoiceTranscriberStateChangedEventArgs>? StateChanged;
 
     public Task<bool> CheckPrerequisitesAsync(CancellationToken ct = default) => Task.FromResult(true);
-    public Task StartDictationAsync(Action<string> onTextRecognized, CancellationToken ct = default) => Task.CompletedTask;
-    public Task StartDictationAsync(Action<TranscriptionChunk> onChunkRecognized, CancellationToken ct = default) => Task.CompletedTask;
+    public Task<VoiceRecognitionStartResult> StartDictationAsync(Action<TranscriptionChunk> onChunkRecognized, CancellationToken ct = default) =>
+        Task.FromResult(VoiceRecognitionStartResult.Started);
     public Task StopDictationAsync() => Task.CompletedTask;
     public void Dispose() { }
 }

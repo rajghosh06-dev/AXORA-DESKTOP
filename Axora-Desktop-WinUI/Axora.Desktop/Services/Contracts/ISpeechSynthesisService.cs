@@ -16,7 +16,11 @@ public interface ISpeechSynthesisService : IDisposable
     double SpeechVolume { get; set; }
 
     Task InitializeAsync(CancellationToken ct = default);
-    Task SpeakTextAsync(string text, double pitch = 1.0, double rate = 1.0, CancellationToken ct = default);
+    Task<SpeechPlaybackResult> SpeakTextAsync(
+        string text,
+        double pitch = 1.0,
+        double rate = 1.0,
+        CancellationToken ct = default);
     void Stop();
     void Pause();
     void Resume();

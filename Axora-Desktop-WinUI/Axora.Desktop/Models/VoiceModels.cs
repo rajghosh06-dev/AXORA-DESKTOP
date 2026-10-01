@@ -20,6 +20,29 @@ public enum VoiceSessionState
 }
 
 /// <summary>
+/// Truthful terminal result for starting a physical Windows speech-recognition session.
+/// </summary>
+public enum VoiceRecognitionStartResult
+{
+    Started,
+    Unavailable,
+    PermissionDenied,
+    Canceled,
+    Failed
+}
+
+/// <summary>
+/// Truthful terminal result for one admitted speech-playback request.
+/// </summary>
+public enum SpeechPlaybackResult
+{
+    Completed,
+    Canceled,
+    Unavailable,
+    Failed
+}
+
+/// <summary>
 /// Health and availability status of the microphone audio capture hardware and Windows permissions.
 /// </summary>
 public enum AudioCaptureHealth
@@ -111,7 +134,8 @@ public sealed record VoiceCommandMatchResult(
 public sealed record TranscriptionChunk(
     string RawText,
     string FormattedText,
-    bool IsFinal
+    bool IsFinal,
+    long SequenceNumber = 0
 );
 
 /// <summary>

@@ -4,6 +4,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Dispatching;
+using Axora.Desktop.Helpers;
 using Axora.Desktop.Models.Voice;
 using Axora.Desktop.Services.Contracts;
 
@@ -17,6 +19,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly IVoiceCoordinator? _voiceCoordinator;
     private readonly IVoiceCommandRouter? _commandRouter;
+    private readonly DispatcherQueue? _dispatcher;
 
     [ObservableProperty]
     private string _currentPageTitle = "Dashboard";
@@ -67,6 +70,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         _voiceCoordinator = voiceCoordinator;
         _commandRouter = commandRouter;
+        _dispatcher = DispatcherQueue.GetForCurrentThread();
 
         if (_voiceCoordinator != null)
         {
@@ -100,11 +104,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 Aliases: aliases,
                 Category: VoiceCommandCategory.Navigation,
                 SafetyLevel: CommandSafetyLevel.Safe,
-                Action: _ =>
-                {
-                    NavigateTo(tag);
-                    return Task.CompletedTask;
-                }
+                Action: ct => RunUiActionAsync(() => NavigateTo(tag), ct)
             ));
         }
 
@@ -115,11 +115,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             Aliases: new[] { "toggle pane", "toggle menu" },
             Category: VoiceCommandCategory.ShellControl,
             SafetyLevel: CommandSafetyLevel.Safe,
-            Action: _ =>
-            {
-                TogglePane();
-                return Task.CompletedTask;
-            }
+            Action: ct => RunUiActionAsync(TogglePane, ct)
         ));
 
         _commandRouter.RegisterCommand(new VoiceCommandRegistration(
@@ -128,11 +124,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             Aliases: new[] { "command palette", "show command palette" },
             Category: VoiceCommandCategory.ShellControl,
             SafetyLevel: CommandSafetyLevel.Safe,
-            Action: _ =>
-            {
-                OpenCommandPalette();
-                return Task.CompletedTask;
-            }
+            Action: ct => RunUiActionAsync(OpenCommandPalette, ct)
         ));
 
         _commandRouter.RegisterCommand(new VoiceCommandRegistration(
@@ -163,7 +155,21 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private void OnVoiceStateChanged(object? sender, VoiceSessionStateChangedEventArgs e)
     {
-        UpdateVoiceStatus(e.NewState);
+        if (_dispatcher == null || _dispatcher.HasThreadAccess)
+            UpdateVoiceStatus(e.NewState);
+        else
+            _ = _dispatcher.RunOnUiThreadAsync(() => UpdateVoiceStatus(e.NewState));
+    }
+
+    private Task RunUiActionAsync(Action action, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_dispatcher == null)
+        {
+            action();
+            return Task.CompletedTask;
+        }
+        return _dispatcher.RunOnUiThreadAsync(action);
     }
 
     private void UpdateVoiceStatus(VoiceSessionState state)
@@ -190,7 +196,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (_voiceCoordinator == null) return;
 
-        if (IsVoiceListening)
+        if (_voiceCoordinator.IsVoiceNavigationDesired)
         {
             await _voiceCoordinator.StopVoiceNavigationAsync();
         }

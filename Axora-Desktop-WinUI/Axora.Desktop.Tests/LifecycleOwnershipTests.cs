@@ -147,7 +147,7 @@ public partial class Program
                     "P3B-15: coordinator operational stop does not dispose injected DI service");
                 Assert(monitor.SubscriptionAdds == 1 && monitor.SubscriptionRemoves == 1 && monitor.DisposeCount == 0,
                     "P3B-16: coordinator detaches its watcher subscription once without disposing the DI monitor");
-                Assert(!await coordinator.RequestStartDictationAsync(_ => { }),
+                Assert(await coordinator.RequestStartDictationAsync(_ => { }) == VoiceRecognitionStartResult.Unavailable,
                     "P3B-17: voice work cannot restart after operational stop");
             }
             Assert(transcriber.DisposeCount == 1 && monitor.DisposeCount == 1 && monitor.SubscriptionRemoves == 1,
@@ -158,14 +158,15 @@ public partial class Program
                 new W4MockTranscriber(), deferredSpeech, new VoiceCommandRouter(),
                 new W4MockAudioMonitor(), new VoiceTextFormatter(),
                 new AppSettingsService(customDirectory: settingsPath));
-            bool speechStarted = await speechCoordinator.RequestSpeakAsync("pending speech");
+            Task<SpeechPlaybackResult> speechRequest = speechCoordinator.RequestSpeakAsync("pending speech");
             await deferredSpeech.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
             Task stoppingSpeech = speechCoordinator.StopAsync();
-            Assert(!await speechCoordinator.RequestSpeakAsync("new work"),
+            Assert(await speechCoordinator.RequestSpeakAsync("new work") == SpeechPlaybackResult.Unavailable,
                 "P3B-R1-01: voice admission closes as soon as operational stop begins");
-            Assert(speechStarted && !stoppingSpeech.IsCompleted,
+            Assert(!speechRequest.IsCompleted && !stoppingSpeech.IsCompleted,
                 "P3B-19: voice stop waits for an in-flight synthesis task before host disposal");
             deferredSpeech.Release.SetResult();
+            await speechRequest.WaitAsync(TimeSpan.FromSeconds(2));
             await stoppingSpeech.WaitAsync(TimeSpan.FromSeconds(2));
             speechCoordinator.Dispose();
             Assert(deferredSpeech.LatePlaybackCount == 0 && deferredSpeech.StopCount == 1 && deferredSpeech.DisposeCount == 0,
@@ -177,24 +178,20 @@ public partial class Program
                 new W4MockTranscriber(), callbackSpeech, new VoiceCommandRouter(),
                 new W4MockAudioMonitor(), new VoiceTextFormatter(),
                 new AppSettingsService(customDirectory: settingsPath));
-            await callbackCoordinator.RequestSpeakAsync("callback race");
+            Task<SpeechPlaybackResult> callbackRequest = callbackCoordinator.RequestSpeakAsync("callback race");
             await callbackSpeech.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
             var stateLock = (SemaphoreSlim)typeof(VoiceCoordinator)
                 .GetField("_stateLock", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(callbackCoordinator)!;
-            var completionTasks = (HashSet<Task>)typeof(VoiceCoordinator)
-                .GetField("_completionTasks", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(callbackCoordinator)!;
             await stateLock.WaitAsync();
-            callbackSpeech.RaisePlaybackEnded();
-            Task[] admittedCallbacks = completionTasks.ToArray();
             Task stoppingCallback = callbackCoordinator.StopAsync();
             stateLock.Release();
             callbackSpeech.Release.SetResult();
+            await callbackRequest.WaitAsync(TimeSpan.FromSeconds(2));
             await stoppingCallback.WaitAsync(TimeSpan.FromSeconds(2));
             callbackCoordinator.Dispose();
-            Assert(admittedCallbacks.Length == 1 && admittedCallbacks.All(t => t.IsCompletedSuccessfully),
-                "P3B-R1-08: pre-shutdown playback callback is tracked and drained before semaphore disposal");
+            Assert(callbackRequest.IsCompletedSuccessfully && stoppingCallback.IsCompletedSuccessfully,
+                "P3B-R1-08: pre-shutdown terminal speech work is tracked and drained before semaphore disposal");
             callbackSpeech.Dispose();
 
             var hungHost = new LifecycleHost();
@@ -461,17 +458,18 @@ public partial class Program
     {
         public VoiceSessionState CurrentState => VoiceSessionState.Idle;
         public bool IsVoiceNavigationEnabled { get; set; }
+        public bool IsVoiceNavigationDesired => false;
         public AudioCaptureHealth CaptureHealth => AudioCaptureHealth.Healthy;
         public TimeSpan AcousticDebounceInterval { get; set; }
         public bool FailStop { get; set; }
         public TaskCompletionSource? BlockStop { get; set; }
         public int StopCount { get; private set; }
         public event EventHandler<VoiceSessionStateChangedEventArgs>? StateChanged { add { } remove { } }
-        public Task<bool> RequestStartDictationAsync(Action<string> callback, CancellationToken ct = default) => Task.FromResult(false);
+        public Task<VoiceRecognitionStartResult> RequestStartDictationAsync(Action<string> callback, CancellationToken ct = default) => Task.FromResult(VoiceRecognitionStartResult.Unavailable);
         public Task RequestStopDictationAsync() => Task.CompletedTask;
-        public Task<bool> RequestSpeakAsync(string text, double? pitch = null, double? rate = null, CancellationToken ct = default) => Task.FromResult(false);
+        public Task<SpeechPlaybackResult> RequestSpeakAsync(string text, double? pitch = null, double? rate = null, CancellationToken ct = default) => Task.FromResult(SpeechPlaybackResult.Unavailable);
         public void RequestStopSpeech() { }
-        public Task<bool> StartVoiceNavigationAsync(CancellationToken ct = default) => Task.FromResult(false);
+        public Task<VoiceRecognitionStartResult> StartVoiceNavigationAsync(CancellationToken ct = default) => Task.FromResult(VoiceRecognitionStartResult.Unavailable);
         public Task StopVoiceNavigationAsync() => Task.CompletedTask;
         public Task StopAsync()
         {
@@ -509,8 +507,7 @@ public partial class Program
             remove => _inner.StateChanged -= value;
         }
         public Task<bool> CheckPrerequisitesAsync(CancellationToken ct = default) => _inner.CheckPrerequisitesAsync(ct);
-        public Task StartDictationAsync(Action<string> callback, CancellationToken ct = default) => _inner.StartDictationAsync(callback, ct);
-        public Task StartDictationAsync(Action<TranscriptionChunk> callback, CancellationToken ct = default) => _inner.StartDictationAsync(callback, ct);
+        public Task<VoiceRecognitionStartResult> StartDictationAsync(Action<TranscriptionChunk> callback, CancellationToken ct = default) => _inner.StartDictationAsync(callback, ct);
         public Task StopDictationAsync() { StopCount++; return _inner.StopDictationAsync(); }
         public void Dispose() { DisposeCount++; _inner.Dispose(); }
     }
@@ -529,8 +526,7 @@ public partial class Program
             remove => _inner.StateChanged -= value;
         }
         public Task<bool> CheckPrerequisitesAsync(CancellationToken ct = default) => _inner.CheckPrerequisitesAsync(ct);
-        public Task StartDictationAsync(Action<string> callback, CancellationToken ct = default) => _inner.StartDictationAsync(callback, ct);
-        public Task StartDictationAsync(Action<TranscriptionChunk> callback, CancellationToken ct = default) => _inner.StartDictationAsync(callback, ct);
+        public Task<VoiceRecognitionStartResult> StartDictationAsync(Action<TranscriptionChunk> callback, CancellationToken ct = default) => _inner.StartDictationAsync(callback, ct);
         public Task StopDictationAsync()
         {
             StopEntered.TrySetResult();
@@ -625,11 +621,15 @@ public partial class Program
         public void RaisePlaybackEnded() => PlaybackStateChanged?.Invoke(this,
             new SpeechPlaybackStateChangedEventArgs(false, null));
         public Task InitializeAsync(CancellationToken ct = default) => Task.CompletedTask;
-        public async Task SpeakTextAsync(string text, double pitch = 1, double rate = 1, CancellationToken ct = default)
+        public async Task<SpeechPlaybackResult> SpeakTextAsync(string text, double pitch = 1, double rate = 1, CancellationToken ct = default)
         {
             Started.TrySetResult();
+            PlaybackStateChanged?.Invoke(this, new SpeechPlaybackStateChangedEventArgs(true, null));
             await Release.Task;
-            if (!ct.IsCancellationRequested) LatePlaybackCount++;
+            if (ct.IsCancellationRequested) return SpeechPlaybackResult.Canceled;
+            LatePlaybackCount++;
+            PlaybackStateChanged?.Invoke(this, new SpeechPlaybackStateChangedEventArgs(false, null));
+            return SpeechPlaybackResult.Completed;
         }
         public void Stop() => StopCount++;
         public void Pause() { }
