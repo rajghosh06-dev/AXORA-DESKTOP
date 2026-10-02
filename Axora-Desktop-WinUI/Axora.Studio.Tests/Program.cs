@@ -4,7 +4,7 @@ namespace Axora.Studio.Tests;
 
 internal static class Program
 {
-    private static readonly string[] Manifest = ["STUDIO-H0"];
+    private static readonly string[] Manifest = ["STUDIO-H0", "STUDIO-M1-FLASHCARDS"];
     public static async Task<int> Main(string[] args)
     {
         if (args.SequenceEqual(new[] { "--manifest" }))
@@ -12,28 +12,37 @@ internal static class Program
             Console.WriteLine(JsonSerializer.Serialize(new { groups = Manifest, timeoutSeconds = 120 }));
             return 0;
         }
-        if (args.Length != 0 && !args.SequenceEqual(new[] { "--group=STUDIO-H0" }))
+        string[] selected = args.Length == 0 ? Manifest : args.Length == 1 && args[0].StartsWith("--group=", StringComparison.Ordinal)
+            ? [args[0][8..]] : [];
+        if (selected.Length == 0 || selected.Any(group => !Manifest.Contains(group, StringComparer.Ordinal)))
         {
             Console.WriteLine("Unknown arguments/group. No tests ran.");
             return 2;
         }
+        int failures = 0;
+        foreach (string group in selected)
+        {
         var checks = new Checks();
         int blocked = 0;
-        try { await HostTests.RunAsync(checks).WaitAsync(TimeSpan.FromSeconds(120)); }
-        catch (TimeoutException) { blocked = 1; Console.WriteLine("BLOCKED: STUDIO-H0 exceeded 120 seconds."); }
+        var required = group == "STUDIO-H0" ? HostTests.RequiredCases : FlashcardsTests.RequiredCases;
+        try { await (group == "STUDIO-H0" ? HostTests.RunAsync(checks) : FlashcardsTests.RunAsync(checks)).WaitAsync(TimeSpan.FromSeconds(120)); }
+        catch (TimeoutException) { blocked = 1; Console.WriteLine($"BLOCKED: {group} exceeded 120 seconds."); }
         catch (Exception ex) { checks.Fail("Unhandled test-group exception", ex.ToString()); }
-        bool complete = checks.Executed.SetEquals(HostTests.RequiredCases);
-        int missing = HostTests.RequiredCases.Except(checks.Executed).Count();
-        int unknown = checks.Executed.Except(HostTests.RequiredCases).Count();
+        bool complete = checks.Executed.SetEquals(required);
+        int missing = required.Except(checks.Executed).Count();
+        int unknown = checks.Executed.Except(required).Count();
         bool pass = complete && checks.Failed == 0 && blocked == 0 && checks.Duplicate == 0 && unknown == 0;
         Console.WriteLine("STUDIO-LEDGER " + JsonSerializer.Serialize(new
         {
-            group = Manifest.Single(), registeredGroups = 1, executedGroups = 1,
+            group, registeredGroups = selected.Length, executedGroups = 1, totalRegisteredGroups = Manifest.Length,
             disposition = pass ? "Pass" : blocked != 0 ? "Blocked" : "Fail",
             passedAssertions = checks.Passed, failedAssertions = checks.Failed,
             missing, duplicate = checks.Duplicate, unknown, blocked, complete
         }));
-        return pass ? 0 : 1;
+        if (!pass) failures++;
+        if (blocked != 0) return 1; // Never run another group while a timed-out group may still be live.
+        }
+        return failures == 0 ? 0 : 1;
     }
 }
 

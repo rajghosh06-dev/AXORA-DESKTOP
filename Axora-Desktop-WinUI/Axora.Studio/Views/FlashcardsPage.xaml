@@ -1,0 +1,105 @@
+<Page x:Class="Axora.Studio.Views.FlashcardsPage"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:models="using:Axora.Studio.Models">
+ <Grid>
+  <VisualStateManager.VisualStateGroups>
+   <VisualStateGroup>
+    <VisualState x:Name="Narrow">
+     <VisualState.Setters>
+      <Setter Target="DeckPanel.(Grid.ColumnSpan)" Value="2"/>
+      <Setter Target="StudyPanel.(Grid.Column)" Value="0"/>
+      <Setter Target="StudyPanel.(Grid.Row)" Value="1"/>
+      <Setter Target="StudyPanel.(Grid.ColumnSpan)" Value="2"/>
+     </VisualState.Setters>
+    </VisualState>
+    <VisualState x:Name="Wide">
+     <VisualState.Setters>
+      <Setter Target="DeckPanel.(Grid.ColumnSpan)" Value="1"/>
+      <Setter Target="StudyPanel.(Grid.Column)" Value="1"/>
+      <Setter Target="StudyPanel.(Grid.Row)" Value="0"/>
+      <Setter Target="StudyPanel.(Grid.ColumnSpan)" Value="1"/>
+     </VisualState.Setters>
+    </VisualState>
+   </VisualStateGroup>
+  </VisualStateManager.VisualStateGroups>
+ <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+  <StackPanel Spacing="16" Padding="0,0,0,12">
+   <StackPanel Spacing="4">
+    <TextBlock Text="Session-only Flashcards" Style="{ThemeResource TitleTextBlockStyle}" TextWrapping="Wrap" />
+    <TextBlock Text="Custom review intervals · Practise every card, then rate your recall." TextWrapping="Wrap"
+     Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+    <TextBlock Text="Decks and review progress exist only for this Studio session. They are not restored after Studio exits."
+     TextWrapping="Wrap" AutomationProperties.Name="Session-only notice" />
+   </StackPanel>
+   <Grid x:Name="StudyGrid" ColumnSpacing="16" RowSpacing="16">
+    <Grid.ColumnDefinitions><ColumnDefinition x:Name="DeckColumn" Width="240"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Border x:Name="DeckPanel" Padding="16" CornerRadius="8" VerticalAlignment="Top"
+     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+     <StackPanel Spacing="12">
+      <TextBlock Text="Study decks" FontWeight="SemiBold" />
+      <ListView ItemsSource="{x:Bind ViewModel.Decks}" SelectedItem="{x:Bind ViewModel.ActiveDeck, Mode=TwoWay}"
+       SelectionMode="Single" MaxHeight="260" AutomationProperties.Name="Study decks">
+       <ListView.ItemTemplate>
+        <DataTemplate x:DataType="models:FlashcardDeck">
+         <StackPanel Spacing="2">
+          <TextBlock Text="{x:Bind Title}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+          <TextBlock Text="{x:Bind CardCount}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+         </StackPanel>
+        </DataTemplate>
+       </ListView.ItemTemplate>
+      </ListView>
+      <Button Content="New Study Deck" Command="{x:Bind ViewModel.CreateDeckCommand}" HorizontalAlignment="Stretch"
+       AutomationProperties.Name="Create one starter deck" ToolTipService.ToolTip="Adds one educational starter card; no editor is included."/>
+      <TextBlock Text="Adds one starter card, not a deck editor." TextWrapping="Wrap" Style="{ThemeResource CaptionTextBlockStyle}"/>
+     </StackPanel>
+    </Border>
+    <StackPanel x:Name="StudyPanel" Grid.Column="1" Spacing="12">
+     <TextBlock Text="{x:Bind ViewModel.ActiveDeck.Title, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap"/>
+     <TextBlock Text="{x:Bind ViewModel.DeckStats, Mode=OneWay}" TextWrapping="Wrap"/>
+     <TextBlock Text="{x:Bind ViewModel.SessionProgress, Mode=OneWay}" AutomationProperties.Name="Card progress"/>
+     <Button x:Name="CardButton" Command="{x:Bind ViewModel.FlipCardCommand}" HorizontalAlignment="Stretch"
+      HorizontalContentAlignment="Stretch" Padding="24" MinHeight="180"
+      AutomationProperties.Name="{x:Bind ViewModel.CardAccessibleText, Mode=OneWay}">
+      <StackPanel Spacing="16">
+       <TextBlock Text="{x:Bind ViewModel.CardSide, Mode=OneWay}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+       <TextBlock Text="{x:Bind ViewModel.CardText, Mode=OneWay}" FontSize="20" TextWrapping="Wrap"/>
+       <TextBlock Text="Click, Space, or Enter to flip" TextWrapping="Wrap" Style="{ThemeResource CaptionTextBlockStyle}"/>
+      </StackPanel>
+     </Button>
+     <Grid ColumnSpacing="8">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Button Content="Previous" Command="{x:Bind ViewModel.PreviousCardCommand}" HorizontalAlignment="Stretch" AutomationProperties.Name="Previous card"/>
+      <Button Grid.Column="1" Content="Next" Command="{x:Bind ViewModel.NextCardCommand}" HorizontalAlignment="Stretch" AutomationProperties.Name="Next card"/>
+     </Grid>
+     <TextBlock Text="Rate recall" FontWeight="SemiBold"/>
+     <Grid ColumnSpacing="8">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Button Content="Easy (1)" Tag="Easy" Click="Rate_Click" IsEnabled="{x:Bind ViewModel.HasCard, Mode=OneWay}" HorizontalAlignment="Stretch"/>
+      <Button Grid.Column="1" Content="Medium (2)" Tag="Medium" Click="Rate_Click" IsEnabled="{x:Bind ViewModel.HasCard, Mode=OneWay}" HorizontalAlignment="Stretch"/>
+      <Button Grid.Column="2" Content="Hard (3)" Tag="Hard" Click="Rate_Click" IsEnabled="{x:Bind ViewModel.HasCard, Mode=OneWay}" HorizontalAlignment="Stretch"/>
+     </Grid>
+     <TextBlock Text="{x:Bind ViewModel.ReviewDetails, Mode=OneWay}" TextWrapping="Wrap"/>
+     <TextBlock Text="Study keys: Space/Enter flip · Left/A previous · Right/D next · 1 Easy · 2 Medium · 3 Hard"
+      TextWrapping="Wrap" Style="{ThemeResource CaptionTextBlockStyle}"/>
+    </StackPanel>
+   </Grid>
+   <Expander Header="Create cards from structured notes" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+    <StackPanel Spacing="12">
+     <TextBlock Text="Rule-based: Term: definition or adjacent question/answer lines. Unstructured text becomes an excerpt. Review the result yourself."
+      TextWrapping="Wrap"/>
+     <TextBox Header="Source label (optional, display only)" MaxLength="250" Text="{x:Bind ViewModel.SourceLabel, Mode=TwoWay}"/>
+     <TextBox Header="Structured notes" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" MaxHeight="200"
+      MaxLength="1048576" Text="{x:Bind ViewModel.NotesText, Mode=TwoWay}"/>
+     <TextBlock Text="Limits: 1 MiB UTF-8 notes · 500 cards/deck · 4,096 Unicode scalars/field · 100 decks/session · 16 MiB card text"
+      TextWrapping="Wrap" Style="{ThemeResource CaptionTextBlockStyle}"/>
+     <Button Content="Create cards from structured notes" Command="{x:Bind ViewModel.CreateCardsFromNotesCommand}"/>
+    </StackPanel>
+   </Expander>
+   <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}" TextWrapping="Wrap"
+    AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Flashcards status"/>
+  </StackPanel>
+ </ScrollViewer>
+ </Grid>
+</Page>

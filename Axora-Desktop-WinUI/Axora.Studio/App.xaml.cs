@@ -44,7 +44,8 @@ public sealed partial class App : Application
                 var loaded = await _settings.LoadAsync(token);
                 _log.Write($"Settings loaded; theme={loaded.Settings.Theme}; writable={loaded.CanSave}");
                 _window = new MainWindow(_host.Services.GetRequiredService<ShellViewModel>(),
-                    _host.Services.GetRequiredService<SettingsViewModel>(), _log);
+                    _host.Services.GetRequiredService<SettingsViewModel>(), _log,
+                    _host.Services.GetRequiredService<Func<FlashcardsViewModel>>());
                 bool closePending = false;
                 bool shutdownFinished = false;
                 _window.AppWindow.Closing += async (_, closing) =>

@@ -33,13 +33,14 @@ internal static class HostTests
             c.That(host.Services.GetRequiredService<StudioSettingsService>() is not null, "Production DI graph resolves settings");
             c.That(host.Services.GetRequiredService<StudioSettingsService>().BeforeFinalRecheckForTest is null,
                 "Normal production composition leaves final-recheck test hook dormant");
-            c.That(host.Services.GetRequiredService<ShellViewModel>().Routes.Count == 3, "Production DI resolves shell");
+            c.That(host.Services.GetRequiredService<ShellViewModel>().Routes.Count == 4, "Production DI resolves four real routes");
             c.That(host.Services.GetRequiredService<SettingsViewModel>().Themes.Count == 3, "Production DI resolves settings VM");
             c.That(!host.Services.GetServices<IHostedService>().Any(), "No automatic feature/background startup");
             Type[] owned = descriptors.Select(x => x.ServiceType).Where(t => t.Namespace?.StartsWith("Axora.Studio") == true).ToArray();
             Type[] expected = [typeof(StudioPathService), typeof(StudioWriterLease), typeof(ISettingsFilePublisher),
-                typeof(StudioSettingsService), typeof(ShellViewModel), typeof(SettingsViewModel)];
-            c.That(owned.ToHashSet().SetEquals(expected), "Exact H0-only production registration inventory");
+                typeof(StudioSettingsService), typeof(ShellViewModel), typeof(SettingsViewModel),
+                typeof(FlashcardReviewPolicy), typeof(FlashcardTextGenerator), typeof(FlashcardsViewModel)];
+            c.That(owned.ToHashSet().SetEquals(expected), "Exact H0 plus core Flashcards registration inventory");
             await host.StopAsync();
         });
         await c.CaseAsync("startup-failure", async () =>
@@ -434,16 +435,17 @@ internal static class HostTests
         await c.CaseAsync("routes", () =>
         {
             var vm = new ShellViewModel();
-            c.That(StudioRoutes.All.Select(r => r.Route).ToHashSet().SetEquals(Enum.GetValues<StudioRoute>()), "Exactly Home/Settings/About in catalog");
+            c.That(StudioRoutes.All.Select(r => r.Route).ToHashSet().SetEquals(Enum.GetValues<StudioRoute>()), "Exactly four real routes in catalog");
             foreach (var item in StudioRoutes.All)
             {
                 vm.Navigate(item.Route);
                 c.That(vm.SelectedRoute == item.Route && StudioRoutes.Resolve(item.Route).PageType.Name == item.Label + "Page", "Actual page resolution " + item.Label);
             }
+            var priorRoute = vm.SelectedRoute;
             bool rejected = false; try { vm.Navigate((StudioRoute)999); } catch (ArgumentOutOfRangeException) { rejected = true; }
-            c.That(rejected && vm.SelectedRoute == StudioRoute.About, "Unknown route rejected without changing navigation");
+            c.That(rejected && vm.SelectedRoute == priorRoute, "Unknown route rejected without changing navigation");
             rejected = false; try { vm.SelectedRoute = (StudioRoute)999; } catch (ArgumentOutOfRangeException) { rejected = true; }
-            c.That(rejected && vm.SelectedRoute == StudioRoute.About, "Direct route assignment also rejects invalid values");
+            c.That(rejected && vm.SelectedRoute == priorRoute, "Direct route assignment also rejects invalid values");
             return Task.CompletedTask;
         });
         await c.CaseAsync("settings-viewmodel", async () =>

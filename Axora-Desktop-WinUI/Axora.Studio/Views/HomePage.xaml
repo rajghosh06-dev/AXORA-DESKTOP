@@ -11,7 +11,7 @@
     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
     <StackPanel Spacing="12">
      <TextBlock Text="A new foundation" Style="{ThemeResource TitleTextBlockStyle}" TextWrapping="Wrap" />
-     <TextBlock Text="This is the independent Studio host foundation. No study or creation features have migrated yet."
+     <TextBlock Text="Session-only Flashcards study is available. Exports, read-aloud, Scholar integration, and persistence are not included."
       TextWrapping="Wrap" />
      <TextBlock Text="Explore Settings to choose a theme, or About for this build's identity. Your existing AXORA Desktop remains the reference application."
       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

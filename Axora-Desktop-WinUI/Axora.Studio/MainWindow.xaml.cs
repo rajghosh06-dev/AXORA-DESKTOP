@@ -12,10 +12,13 @@ public sealed partial class MainWindow : Window
 {
     private readonly SettingsViewModel _settings;
     private readonly StudioDiagnostics _log;
+    private readonly Lazy<FlashcardsViewModel> _flashcards;
     public ShellViewModel ViewModel { get; }
-    public MainWindow(ShellViewModel shell, SettingsViewModel settings, StudioDiagnostics log)
+    public MainWindow(ShellViewModel shell, SettingsViewModel settings, StudioDiagnostics log,
+        Func<FlashcardsViewModel> flashcardsFactory)
     {
         (ViewModel, _settings, _log) = (shell, settings, log);
+        _flashcards = new(flashcardsFactory);
         InitializeComponent();
         Title = AppWindow.Title = "AXORA Studio";
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
@@ -38,15 +41,30 @@ public sealed partial class MainWindow : Window
     private void ShowRoute(StudioRoute route)
     {
         var entry = StudioRoutes.Resolve(route);
+        bool firstFlashcards = route == StudioRoute.Flashcards && !_flashcards.IsValueCreated;
+        var activation = System.Diagnostics.Stopwatch.StartNew();
+        var flashcards = ResolveFlashcards(route, _flashcards);
         Page page = entry.PageType == typeof(HomePage) ? new HomePage()
             : entry.PageType == typeof(SettingsPage) ? new SettingsPage(_settings)
             : entry.PageType == typeof(AboutPage) ? new AboutPage()
+            : entry.PageType == typeof(FlashcardsPage) ? new FlashcardsPage(flashcards!)
             : throw new InvalidOperationException("The route has no Studio page factory.");
         RoutedEventHandler? loaded = null;
-        loaded = (_, _) => { page.Loaded -= loaded; _log.Write($"Route rendered: {entry.Label}; page={page.GetType().Name}"); };
+        loaded = (_, _) =>
+        {
+            page.Loaded -= loaded;
+            _log.Write($"Route rendered: {entry.Label}; page={page.GetType().Name}; flashcardsCreated={_flashcards.IsValueCreated}");
+            if (firstFlashcards) _log.Write($"Flashcards first render; elapsedMs={activation.ElapsedMilliseconds}");
+        };
         page.Loaded += loaded;
         PageContent.Content = page;
         Navigation.SelectedItem = entry;
+    }
+    // Narrow production seam, also exercised without constructing a native Window in deterministic tests.
+    public static FlashcardsViewModel? ResolveFlashcards(StudioRoute route, Lazy<FlashcardsViewModel> feature)
+    {
+        _ = StudioRoutes.Resolve(route);
+        return route == StudioRoute.Flashcards ? feature.Value : null;
     }
     public void ApplyTheme(StudioTheme theme)
     {

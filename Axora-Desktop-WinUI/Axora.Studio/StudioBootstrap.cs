@@ -24,6 +24,12 @@ public static class StudioBootstrap
                 services.AddSingleton<StudioSettingsService>();
                 services.AddSingleton<ShellViewModel>();
                 services.AddSingleton<SettingsViewModel>();
+                services.AddSingleton(TimeProvider.System);
+                services.AddSingleton<FlashcardReviewPolicy>();
+                services.AddSingleton<FlashcardTextGenerator>();
+                services.AddSingleton<FlashcardsViewModel>();
+                // Resolving the delegate constructs no feature. Only invoking it resolves the session singleton.
+                services.AddSingleton<Func<FlashcardsViewModel>>(sp => () => sp.GetRequiredService<FlashcardsViewModel>());
                 configure?.Invoke(services);
             }).Build();
     }
