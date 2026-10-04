@@ -13,12 +13,14 @@ public sealed partial class MainWindow : Window
     private readonly SettingsViewModel _settings;
     private readonly StudioDiagnostics _log;
     private readonly Lazy<FlashcardsViewModel> _flashcards;
+    private readonly StudioExportSession _exports;
     public ShellViewModel ViewModel { get; }
     public MainWindow(ShellViewModel shell, SettingsViewModel settings, StudioDiagnostics log,
-        Func<FlashcardsViewModel> flashcardsFactory)
+        Func<FlashcardsViewModel> flashcardsFactory, StudioExportSession exports)
     {
         (ViewModel, _settings, _log) = (shell, settings, log);
         _flashcards = new(flashcardsFactory);
+        _exports = exports;
         InitializeComponent();
         Title = AppWindow.Title = "AXORA Studio";
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
@@ -47,13 +49,13 @@ public sealed partial class MainWindow : Window
         Page page = entry.PageType == typeof(HomePage) ? new HomePage()
             : entry.PageType == typeof(SettingsPage) ? new SettingsPage(_settings)
             : entry.PageType == typeof(AboutPage) ? new AboutPage()
-            : entry.PageType == typeof(FlashcardsPage) ? new FlashcardsPage(flashcards!)
+            : entry.PageType == typeof(FlashcardsPage) ? ExportPage(flashcards!)
             : throw new InvalidOperationException("The route has no Studio page factory.");
         RoutedEventHandler? loaded = null;
         loaded = (_, _) =>
         {
             page.Loaded -= loaded;
-            _log.Write($"Route rendered: {entry.Label}; page={page.GetType().Name}; flashcardsCreated={_flashcards.IsValueCreated}");
+            _log.Write($"Route rendered: {entry.Label}; page={page.GetType().Name}; flashcardsCreated={_flashcards.IsValueCreated}; exportCreated={_exports.IsCreated}");
             if (firstFlashcards) _log.Write($"Flashcards first render; elapsedMs={activation.ElapsedMilliseconds}");
         };
         page.Loaded += loaded;
@@ -65,6 +67,16 @@ public sealed partial class MainWindow : Window
     {
         _ = StudioRoutes.Resolve(route);
         return route == StudioRoute.Flashcards ? feature.Value : null;
+    }
+    private FlashcardsPage ExportPage(FlashcardsViewModel viewModel)
+    {
+        viewModel.ConfigureExport(_exports);
+        return new(viewModel, () => WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
+    public void ShowExportClosePending()
+    {
+        Title = AppWindow.Title = "AXORA Studio — Finishing export before closing";
+        if (_flashcards.IsValueCreated) _flashcards.Value.ExportStatus = "Finishing export before closing.";
     }
     public void ApplyTheme(StudioTheme theme)
     {

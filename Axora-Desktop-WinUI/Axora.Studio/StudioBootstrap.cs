@@ -30,6 +30,10 @@ public static class StudioBootstrap
                 services.AddSingleton<FlashcardsViewModel>();
                 // Resolving the delegate constructs no feature. Only invoking it resolves the session singleton.
                 services.AddSingleton<Func<FlashcardsViewModel>>(sp => () => sp.GetRequiredService<FlashcardsViewModel>());
+                services.AddSingleton<IStudioSavePicker, StudioSavePicker>();
+                services.AddSingleton<IExportFilePublisher>(sp => new ExportFilePublisher(sp.GetRequiredService<StudioPathService>()));
+                services.AddSingleton<FlashcardExportCoordinator>();
+                services.AddSingleton<Func<FlashcardExportCoordinator>>(sp => () => sp.GetRequiredService<FlashcardExportCoordinator>());
                 configure?.Invoke(services);
             }).Build();
     }

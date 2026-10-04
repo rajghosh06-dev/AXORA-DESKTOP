@@ -39,7 +39,8 @@ internal static class HostTests
             Type[] owned = descriptors.Select(x => x.ServiceType).Where(t => t.Namespace?.StartsWith("Axora.Studio") == true).ToArray();
             Type[] expected = [typeof(StudioPathService), typeof(StudioWriterLease), typeof(ISettingsFilePublisher),
                 typeof(StudioSettingsService), typeof(ShellViewModel), typeof(SettingsViewModel),
-                typeof(FlashcardReviewPolicy), typeof(FlashcardTextGenerator), typeof(FlashcardsViewModel)];
+                typeof(FlashcardReviewPolicy), typeof(FlashcardTextGenerator), typeof(FlashcardsViewModel),
+                typeof(IStudioSavePicker), typeof(IExportFilePublisher), typeof(FlashcardExportCoordinator)];
             c.That(owned.ToHashSet().SetEquals(expected), "Exact H0 plus core Flashcards registration inventory");
             await host.StopAsync();
         });

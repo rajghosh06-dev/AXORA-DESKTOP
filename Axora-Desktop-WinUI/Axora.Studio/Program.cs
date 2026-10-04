@@ -29,13 +29,24 @@ public static class Program
         {
             Environment.ExitCode = 1;
             log?.Write($"Fatal entry failure: {ex.GetType().Name}");
-            System.Diagnostics.Debug.WriteLine(ex);
+            System.Diagnostics.Debug.WriteLine($"Fatal entry failure: {ex.GetType().Name}; HRESULT={ex.HResult}");
         }
         finally
         {
+            // Application.Start has returned; a DispatcherQueue context must not capture fallback continuations.
+            SynchronizationContext.SetSynchronizationContext(null);
             try
             {
-                if (app is not null) app.ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult();
+                if (app is not null)
+                {
+                    Task settlement = app.ShutdownAsync();
+                    if (app.HasActiveExport)
+                    {
+                        log?.Write("Program fallback retains export settlement");
+                        settlement.GetAwaiter().GetResult(); // No observation timeout may abandon file-integrity work.
+                    }
+                    else settlement.WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult();
+                }
                 log?.Write("Program fallback settled");
             }
             catch (Exception ex) { Environment.ExitCode = 1; log?.Write($"Program fallback failed: {ex.GetType().Name}"); }

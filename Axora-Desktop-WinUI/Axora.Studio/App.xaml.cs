@@ -11,6 +11,7 @@ public sealed partial class App : Application
     private readonly IHost _host;
     private readonly StudioLifecycle _lifecycle;
     private readonly StudioDiagnostics _log;
+    private readonly StudioExportSession _exports;
     private MainWindow? _window;
     private Task? _launch;
     private StudioSettingsService? _settings;
@@ -19,7 +20,15 @@ public sealed partial class App : Application
         _log = log;
         InitializeComponent();
         UnhandledException += (_, args) => _log.Write($"Unhandled XAML failure: {args.Exception.GetType().Name}");
-        _host = StudioBootstrap.BuildHost(paths);
+        _host = StudioBootstrap.BuildHost(paths, services => services.AddSingleton<Axora.Studio.Services.Contracts.IStudioSavePicker>(_ => new StudioSavePicker(_log.Write)));
+        var exportFactory = _host.Services.GetRequiredService<Func<FlashcardExportCoordinator>>();
+        _exports = new(() =>
+        {
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            var coordinator = exportFactory();
+            _log.Write($"Export coordinator created; count=1; elapsedMs={timer.Elapsed.TotalMilliseconds:0.00}");
+            return coordinator;
+        });
         _lifecycle = new StudioLifecycle(_host, () => _settings?.StopAsync() ?? Task.CompletedTask, _log.Write);
     }
 
@@ -28,7 +37,8 @@ public sealed partial class App : Application
         base.OnLaunched(args);
         _launch = LaunchAsync();
     }
-    public Task ShutdownAsync() => _lifecycle.ShutdownAsync();
+    public bool HasActiveExport => _exports.IsActive;
+    public Task ShutdownAsync() => _exports.ShutdownAsync(_lifecycle.ShutdownAsync);
     private async Task LaunchAsync()
     {
         try
@@ -45,7 +55,7 @@ public sealed partial class App : Application
                 _log.Write($"Settings loaded; theme={loaded.Settings.Theme}; writable={loaded.CanSave}");
                 _window = new MainWindow(_host.Services.GetRequiredService<ShellViewModel>(),
                     _host.Services.GetRequiredService<SettingsViewModel>(), _log,
-                    _host.Services.GetRequiredService<Func<FlashcardsViewModel>>());
+                    _host.Services.GetRequiredService<Func<FlashcardsViewModel>>(), _exports);
                 bool closePending = false;
                 bool shutdownFinished = false;
                 _window.AppWindow.Closing += async (_, closing) =>
@@ -55,7 +65,15 @@ public sealed partial class App : Application
                     if (closePending) return;
                     closePending = true;
                     _log.Write("Window close requested");
-                    try { await ShutdownAsync(); }
+                    _log.Write($"Window close context; thread={Environment.CurrentManagedThreadId}; apartment={Thread.CurrentThread.GetApartmentState()}");
+                    if (_exports.IsActive) _window.ShowExportClosePending();
+                    _log.Write("Export close status updated; requesting session shutdown");
+                    try
+                    {
+                        var settlement = ShutdownAsync();
+                        _log.Write("Export shutdown task retained");
+                        await settlement;
+                    }
                     catch (Exception ex) { Environment.ExitCode = 1; _log.Write($"Window shutdown failed: {ex.GetType().Name}"); }
                     finally
                     {

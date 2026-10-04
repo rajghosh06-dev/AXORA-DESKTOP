@@ -41,6 +41,49 @@ public sealed partial class FlashcardsViewModel : ObservableObject
     public string DeckStats => ActiveDeck is { } deck ? $"{deck.CardCount} {(deck.CardCount == 1 ? "card" : "cards")} · Cards marked Easy: {deck.EasyStatistic}" : "No deck selected";
     public string ReviewDetails => CurrentCard is { } card ? $"Reviews: {card.ReviewCount} · Interval: {card.IntervalDays} day(s) · Ease: {card.EaseFactor:0.##}" : "";
     public bool CanCreateDeck => _decks.Count < FlashcardLimits.SessionDecks;
+    private StudioExportSession? _exports;
+    private bool _isExportBusy;
+    private string _exportStatus = "";
+    private string _exportRecovery = "";
+    public bool IsExportBusy { get => _isExportBusy; private set { if (SetProperty(ref _isExportBusy, value)) OnPropertyChanged(nameof(CanExport)); } }
+    public bool CanExport => ActiveDeck is not null && !IsExportBusy;
+    public string ExportStatus { get => _exportStatus; set => SetProperty(ref _exportStatus, value); }
+    public string ExportRecovery { get => _exportRecovery; private set => SetProperty(ref _exportRecovery, value); }
+    public void ConfigureExport(StudioExportSession exports)
+    {
+        if (_exports is not null && !ReferenceEquals(_exports, exports)) throw new InvalidOperationException("Export session already assigned.");
+        _exports = exports;
+    }
+    public async Task ExportAsync(FlashcardExportFormat format, nint owner)
+    {
+        if (IsExportBusy) { ExportStatus = "An export is already in progress."; return; }
+        if (_exports is null) { ExportStatus = "Export session unavailable."; return; }
+        IsExportBusy = true; ExportRecovery = ""; ExportStatus = "Choose where to save your cards.";
+        try
+        {
+            var result = await _exports.ExportAsync(owner, format, CaptureExportSnapshot);
+            ExportStatus = result.Message;
+            ExportRecovery = result.Publication is { RecoveryPaths.Count: > 0 } publication
+                ? "Retained recovery locations:\n" + string.Join("\n", publication.RecoveryPaths) : "";
+        }
+        catch (Exception) { ExportStatus = "Export could not settle normally; review any destination and recovery files."; }
+        finally { IsExportBusy = false; }
+    }
+
+    /// <summary>Call synchronously on the owning UI thread, before any future dialog/await.</summary>
+    public ExportSnapshotResult CaptureExportSnapshot()
+    {
+        if (ActiveDeck is not { } deck) return new(null, ExportResultState.Rejected, "NoActiveDeck");
+        try
+        {
+            var now = _clock.GetUtcNow();
+            var owned = new FlashcardExportDeck(deck.DeckId, deck.Title, deck.Description, deck.LastStudied,
+                deck.Cards.Select(card => new FlashcardExportCard(card.CardId, card.Front, card.Back, card.Difficulty,
+                    card.ReviewCount, card.EaseFactor, card.IntervalDays, card.LastReviewed, card.NextReviewDate)));
+            return new(new(now, owned), null, "SnapshotCaptured");
+        }
+        catch (ArgumentException) { return new(null, ExportResultState.Rejected, "InvalidSnapshot"); }
+    }
 
     public FlashcardsViewModel(FlashcardReviewPolicy reviews, FlashcardTextGenerator generator, TimeProvider clock)
     {
@@ -73,6 +116,7 @@ public sealed partial class FlashcardsViewModel : ObservableObject
             newValue.MarkStudied(studiedAt!.Value);
         }
         OnPropertyChanged(nameof(ActiveDeck));
+        OnPropertyChanged(nameof(CanExport));
         RefreshCard();
     }
     private void ActiveDeckChanged(object? sender, PropertyChangedEventArgs args) => OnPropertyChanged(nameof(DeckStats));

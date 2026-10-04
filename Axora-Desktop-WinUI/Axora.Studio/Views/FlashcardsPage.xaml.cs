@@ -14,14 +14,21 @@ namespace Axora.Studio.Views;
 public sealed partial class FlashcardsPage : Page
 {
     public FlashcardsViewModel ViewModel { get; }
-    public FlashcardsPage(FlashcardsViewModel viewModel)
+    private readonly Func<nint> _owner;
+    public FlashcardsPage(FlashcardsViewModel viewModel, Func<nint>? owner = null)
     {
         ViewModel = viewModel;
+        _owner = owner ?? (() => 0);
         InitializeComponent();
         Loaded += (_, _) => { UpdateLayoutState(); CardButton.Focus(FocusState.Programmatic); };
         SizeChanged += (_, _) => UpdateLayoutState();
     }
     private void UpdateLayoutState() => VisualStateManager.GoToState(this, ActualWidth >= 720 ? "Wide" : "Narrow", false);
+    private async void Export_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is Button { Tag: string tag } && Enum.TryParse<FlashcardExportFormat>(tag, out var format))
+            await ViewModel.ExportAsync(format, _owner());
+    }
     private void Rate_Click(object sender, RoutedEventArgs args)
     {
         if (sender is Button { Tag: string tag } && Enum.TryParse<CardDifficulty>(tag, out var rating))

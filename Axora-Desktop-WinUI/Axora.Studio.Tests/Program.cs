@@ -4,7 +4,7 @@ namespace Axora.Studio.Tests;
 
 internal static class Program
 {
-    private static readonly string[] Manifest = ["STUDIO-H0", "STUDIO-M1-FLASHCARDS"];
+    private static readonly string[] Manifest = ["STUDIO-H0", "STUDIO-M1-FLASHCARDS", "STUDIO-M1-EXPORT"];
     public static async Task<int> Main(string[] args)
     {
         if (args.SequenceEqual(new[] { "--manifest" }))
@@ -24,8 +24,10 @@ internal static class Program
         {
         var checks = new Checks();
         int blocked = 0;
-        var required = group == "STUDIO-H0" ? HostTests.RequiredCases : FlashcardsTests.RequiredCases;
-        try { await (group == "STUDIO-H0" ? HostTests.RunAsync(checks) : FlashcardsTests.RunAsync(checks)).WaitAsync(TimeSpan.FromSeconds(120)); }
+        var required = group switch { "STUDIO-H0" => HostTests.RequiredCases, "STUDIO-M1-FLASHCARDS" => FlashcardsTests.RequiredCases,
+            "STUDIO-M1-EXPORT" => FlashcardExportTests.RequiredCases, _ => throw new InvalidOperationException() };
+        try { await (group switch { "STUDIO-H0" => HostTests.RunAsync(checks), "STUDIO-M1-FLASHCARDS" => FlashcardsTests.RunAsync(checks),
+            "STUDIO-M1-EXPORT" => FlashcardExportTests.RunAsync(checks), _ => throw new InvalidOperationException() }).WaitAsync(TimeSpan.FromSeconds(120)); }
         catch (TimeoutException) { blocked = 1; Console.WriteLine($"BLOCKED: {group} exceeded 120 seconds."); }
         catch (Exception ex) { checks.Fail("Unhandled test-group exception", ex.ToString()); }
         bool complete = checks.Executed.SetEquals(required);

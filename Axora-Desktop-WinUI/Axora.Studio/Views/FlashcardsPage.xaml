@@ -85,6 +85,23 @@
       TextWrapping="Wrap" Style="{ThemeResource CaptionTextBlockStyle}"/>
     </StackPanel>
    </Grid>
+   <Border Padding="16" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+    <StackPanel Spacing="10">
+     <TextBlock Text="Save a copy of this deck" FontWeight="SemiBold"/>
+     <TextBlock Text="Your session and review progress stay as they are. Choose a format and a local file location." TextWrapping="Wrap"/>
+     <StackPanel Spacing="8" MaxWidth="320" HorizontalAlignment="Left">
+      <Button Content="Save CSV (.csv)" Tag="Csv" Click="Export_Click" IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}" HorizontalAlignment="Stretch" AutomationProperties.Name="Save CSV (.csv)"/>
+      <Button Content="Save Anki-format text (.txt)" Tag="AnkiText" Click="Export_Click" IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}" HorizontalAlignment="Stretch" AutomationProperties.Name="Save Anki-format text (.txt)"/>
+      <Button Content="Save AXORA JSON (.json)" Tag="AxoraJson" Click="Export_Click" IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}" HorizontalAlignment="Stretch" AutomationProperties.Name="Save AXORA JSON (.json)"/>
+     </StackPanel>
+     <TextBlock Text="CSV preserves card text. Import Front and Back as text columns in spreadsheet software." TextWrapping="Wrap" Style="{ThemeResource CaptionTextBlockStyle}"/>
+     <TextBlock Text="Uses Anki's documented two-field text format. Import in Anki has not been verified on this machine." TextWrapping="Wrap" Style="{ThemeResource CaptionTextBlockStyle}"/>
+     <ProgressRing IsActive="{x:Bind ViewModel.IsExportBusy, Mode=OneWay}" Width="20" Height="20" HorizontalAlignment="Left" AutomationProperties.Name="Export in progress"/>
+     <TextBlock Text="{x:Bind ViewModel.ExportStatus, Mode=OneWay}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Export status"/>
+     <TextBlock Text="{x:Bind ViewModel.ExportRecovery, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.Name="Retained export recovery locations"/>
+    </StackPanel>
+   </Border>
    <Expander Header="Create cards from structured notes" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
     <StackPanel Spacing="12">
      <TextBlock Text="Rule-based: Term: definition or adjacent question/answer lines. Unstructured text becomes an excerpt. Review the result yourself."
