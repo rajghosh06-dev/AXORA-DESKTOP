@@ -113,6 +113,12 @@
      <TextBlock Text="{x:Bind ViewModel.ExportRecovery, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.Name="Retained export recovery locations"/>
     </StackPanel>
    </Border>
+   <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+    AutomationProperties.Name="Scholar availability and manual alternative">
+    <Run Text="Scholar integration is not available in this Studio build."/><LineBreak/>
+    <Run Text="Paste notes under “Create cards from structured notes” to create rule-based cards for this session."/><LineBreak/>
+    <Run Text="Legacy Scholar’s “Push to Flashcards” creates decks in AXORA Desktop. Those decks are not transferred to Studio."/>
+   </TextBlock>
    <Expander Header="Create cards from structured notes" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
     <StackPanel Spacing="12">
      <TextBlock Text="Rule-based: Term: definition or adjacent question/answer lines. Unstructured text becomes an excerpt. Review the result yourself."
