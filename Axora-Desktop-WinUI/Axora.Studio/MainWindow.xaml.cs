@@ -14,13 +14,15 @@ public sealed partial class MainWindow : Window
     private readonly StudioDiagnostics _log;
     private readonly Lazy<FlashcardsViewModel> _flashcards;
     private readonly StudioExportSession _exports;
+    private readonly StudioReadAloudSession _readAloud;
     public ShellViewModel ViewModel { get; }
     public MainWindow(ShellViewModel shell, SettingsViewModel settings, StudioDiagnostics log,
-        Func<FlashcardsViewModel> flashcardsFactory, StudioExportSession exports)
+        Func<FlashcardsViewModel> flashcardsFactory, StudioExportSession exports, StudioReadAloudSession readAloud)
     {
         (ViewModel, _settings, _log) = (shell, settings, log);
         _flashcards = new(flashcardsFactory);
         _exports = exports;
+        _readAloud = readAloud;
         InitializeComponent();
         Title = AppWindow.Title = "AXORA Studio";
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
@@ -43,6 +45,7 @@ public sealed partial class MainWindow : Window
     private void ShowRoute(StudioRoute route)
     {
         var entry = StudioRoutes.Resolve(route);
+        DepartFlashcards(route, _flashcards);
         bool firstFlashcards = route == StudioRoute.Flashcards && !_flashcards.IsValueCreated;
         var activation = System.Diagnostics.Stopwatch.StartNew();
         var flashcards = ResolveFlashcards(route, _flashcards);
@@ -55,7 +58,7 @@ public sealed partial class MainWindow : Window
         loaded = (_, _) =>
         {
             page.Loaded -= loaded;
-            _log.Write($"Route rendered: {entry.Label}; page={page.GetType().Name}; flashcardsCreated={_flashcards.IsValueCreated}; exportCreated={_exports.IsCreated}");
+            _log.Write($"Route rendered: {entry.Label}; page={page.GetType().Name}; flashcardsCreated={_flashcards.IsValueCreated}; exportCreated={_exports.IsCreated}; readAloudCreated={_readAloud.IsCreated}");
             if (firstFlashcards) _log.Write($"Flashcards first render; elapsedMs={activation.ElapsedMilliseconds}");
         };
         page.Loaded += loaded;
@@ -68,9 +71,14 @@ public sealed partial class MainWindow : Window
         _ = StudioRoutes.Resolve(route);
         return route == StudioRoute.Flashcards ? feature.Value : null;
     }
+    public static void DepartFlashcards(StudioRoute nextRoute, Lazy<FlashcardsViewModel> feature)
+    {
+        if (nextRoute != StudioRoute.Flashcards && feature.IsValueCreated) feature.Value.OnFlashcardsDeparture();
+    }
     private FlashcardsPage ExportPage(FlashcardsViewModel viewModel)
     {
         viewModel.ConfigureExport(_exports);
+        viewModel.ConfigureReadAloud(_readAloud, action => DispatcherQueue.TryEnqueue(() => action()), _log.Write);
         return new(viewModel, () => WinRT.Interop.WindowNative.GetWindowHandle(this));
     }
     public void ShowExportClosePending()

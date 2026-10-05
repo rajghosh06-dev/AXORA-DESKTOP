@@ -1,4 +1,5 @@
 using Axora.Studio.Services;
+using Axora.Studio.Services.Contracts;
 using Axora.Studio.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -12,6 +13,7 @@ public sealed partial class App : Application
     private readonly StudioLifecycle _lifecycle;
     private readonly StudioDiagnostics _log;
     private readonly StudioExportSession _exports;
+    private readonly StudioReadAloudSession _readAloud;
     private MainWindow? _window;
     private Task? _launch;
     private StudioSettingsService? _settings;
@@ -20,7 +22,20 @@ public sealed partial class App : Application
         _log = log;
         InitializeComponent();
         UnhandledException += (_, args) => _log.Write($"Unhandled XAML failure: {args.Exception.GetType().Name}");
-        _host = StudioBootstrap.BuildHost(paths, services => services.AddSingleton<Axora.Studio.Services.Contracts.IStudioSavePicker>(_ => new StudioSavePicker(_log.Write)));
+        _host = StudioBootstrap.BuildHost(paths, services =>
+        {
+            services.AddSingleton<IStudioSavePicker>(_ => new StudioSavePicker(_log.Write));
+            services.AddSingleton<Func<IFlashcardReadAloudService>>(_ => () =>
+                new FlashcardReadAloudService(new WindowsFlashcardReadAloudBackend(_log.Write), log: _log.Write));
+        });
+        var speechFactory = _host.Services.GetRequiredService<Func<IFlashcardReadAloudService>>();
+        _readAloud = new(() =>
+        {
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            var service = speechFactory();
+            _log.Write($"ReadAloud service created; count=1; elapsedMs={timer.Elapsed.TotalMilliseconds:0.00}");
+            return service;
+        });
         var exportFactory = _host.Services.GetRequiredService<Func<FlashcardExportCoordinator>>();
         _exports = new(() =>
         {
@@ -38,7 +53,7 @@ public sealed partial class App : Application
         _launch = LaunchAsync();
     }
     public bool HasActiveExport => _exports.IsActive;
-    public Task ShutdownAsync() => _exports.ShutdownAsync(_lifecycle.ShutdownAsync);
+    public Task ShutdownAsync() => _readAloud.ShutdownAsync(_exports, _lifecycle.ShutdownAsync);
     private async Task LaunchAsync()
     {
         try
@@ -55,7 +70,7 @@ public sealed partial class App : Application
                 _log.Write($"Settings loaded; theme={loaded.Settings.Theme}; writable={loaded.CanSave}");
                 _window = new MainWindow(_host.Services.GetRequiredService<ShellViewModel>(),
                     _host.Services.GetRequiredService<SettingsViewModel>(), _log,
-                    _host.Services.GetRequiredService<Func<FlashcardsViewModel>>(), _exports);
+                    _host.Services.GetRequiredService<Func<FlashcardsViewModel>>(), _exports, _readAloud);
                 bool closePending = false;
                 bool shutdownFinished = false;
                 _window.AppWindow.Closing += async (_, closing) =>

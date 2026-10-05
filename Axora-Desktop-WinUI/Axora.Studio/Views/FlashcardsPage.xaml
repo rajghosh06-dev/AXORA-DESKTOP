@@ -70,6 +70,17 @@
      </Button>
      <Grid ColumnSpacing="8">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Button x:Name="ReadAloudButton" Content="Read aloud" Command="{x:Bind ViewModel.ReadAloudCommand}"
+       HorizontalAlignment="Stretch" AutomationProperties.Name="Read aloud" ToolTipService.ToolTip="Read the visible card side using an installed Windows voice."/>
+      <Button x:Name="StopReadingButton" Grid.Column="1" Content="Stop reading" Command="{x:Bind ViewModel.StopReadingCommand}"
+       HorizontalAlignment="Stretch" AutomationProperties.Name="Stop reading"/>
+     </Grid>
+     <ProgressRing IsActive="{x:Bind ViewModel.IsReadAloudBusy, Mode=OneWay}" Width="20" Height="20"
+      HorizontalAlignment="Left" AutomationProperties.Name="Read aloud in progress"/>
+     <TextBlock Text="{x:Bind ViewModel.ReadAloudStatus, Mode=OneWay}" TextWrapping="Wrap"
+      AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Read aloud status"/>
+     <Grid ColumnSpacing="8">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
       <Button Content="Previous" Command="{x:Bind ViewModel.PreviousCardCommand}" HorizontalAlignment="Stretch" AutomationProperties.Name="Previous card"/>
       <Button Grid.Column="1" Content="Next" Command="{x:Bind ViewModel.NextCardCommand}" HorizontalAlignment="Stretch" AutomationProperties.Name="Next card"/>
      </Grid>

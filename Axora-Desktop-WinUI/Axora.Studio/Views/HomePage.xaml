@@ -11,7 +11,7 @@
     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
     <StackPanel Spacing="12">
      <TextBlock Text="A new foundation" Style="{ThemeResource TitleTextBlockStyle}" TextWrapping="Wrap" />
-     <TextBlock Text="Session-only Flashcards study supports CSV, Anki-format text, and versioned JSON exports. Read-aloud, Scholar integration, and persistence are not included."
+     <TextBlock Text="Session-only Flashcards study supports CSV, Anki-format text, versioned JSON exports, and read aloud of the visible card side when Windows speech is available. Scholar integration and persistence are not included."
       TextWrapping="Wrap" />
      <TextBlock Text="Decks and review progress are not restored after Studio exits." TextWrapping="Wrap"/>
      <TextBlock Text="Explore Settings to choose a theme, or About for this build's identity. Your existing AXORA Desktop remains the reference application."

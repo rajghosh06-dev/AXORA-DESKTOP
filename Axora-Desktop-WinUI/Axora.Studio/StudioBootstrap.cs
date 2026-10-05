@@ -34,6 +34,8 @@ public static class StudioBootstrap
                 services.AddSingleton<IExportFilePublisher>(sp => new ExportFilePublisher(sp.GetRequiredService<StudioPathService>()));
                 services.AddSingleton<FlashcardExportCoordinator>();
                 services.AddSingleton<Func<FlashcardExportCoordinator>>(sp => () => sp.GetRequiredService<FlashcardExportCoordinator>());
+                // Delegate only: the App session owns the instance; Host never owns native speech cleanup.
+                services.AddSingleton<Func<IFlashcardReadAloudService>>(_ => () => new FlashcardReadAloudService(new WindowsFlashcardReadAloudBackend()));
                 configure?.Invoke(services);
             }).Build();
     }
