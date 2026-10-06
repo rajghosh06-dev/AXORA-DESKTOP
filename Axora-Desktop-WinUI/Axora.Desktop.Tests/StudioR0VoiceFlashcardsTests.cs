@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Axora.Desktop.Helpers;
+using Axora.Desktop.Models;
 using Axora.Desktop.Models.Voice;
 using Axora.Desktop.Services;
 using Axora.Desktop.Services.Contracts;
@@ -41,6 +42,170 @@ public partial class Program
         await VerifyShellDesiredToggleAsync();
         await VerifySettingsTestSpeechUsesCoordinatorAsync();
         await VerifyR0ShutdownOwnershipAsync();
+        VerifyScholarLegacyFlashcardsPush();
+    }
+
+    private static void VerifyScholarLegacyFlashcardsPush()
+    {
+        Console.WriteLine("--- M1 legacy fallback: production Scholar Push command ---");
+        const string success = "Created flashcards in AXORA Desktop.";
+        const string empty = "Scholar content is empty. Enter text first.";
+        const string unavailable = "Flashcards are unavailable in AXORA Desktop.";
+        const string noCards = "No flashcards were created. Existing decks are unchanged.";
+        const string failed = "Couldn't create flashcards. Existing decks are unchanged.";
+        const string manual = "Created cards in AXORA Desktop. Open Flashcards manually.";
+
+        (ScholarKitViewModel Scholar, FlashcardsViewModel Flashcards) Fixture()
+        {
+            var voice = new R0FeatureVoiceCoordinator { AutoComplete = true };
+            var scholar = new ScholarKitViewModel(new DummyOcrService(), new DummyPdfExtractionService(),
+                new DummyDocumentProcessorService(), new DummyVoiceTranscriberService(),
+                new DummyDocumentChatService(), new W4MockSynthesizer(), new DummyScannerService(),
+                new AppSettingsService(customDirectory: Path.Combine(Path.GetTempPath(), "AxoraPush_" + Guid.NewGuid().ToString("N"))),
+                voiceCoordinator: voice);
+            var flashcards = new FlashcardsViewModel(voice);
+            flashcards.NextCard();
+            flashcards.FlipCard();
+            flashcards.ExportStatus = "Prior export status";
+            scholar.FlashcardsPushTargetOverride = () => flashcards;
+            return (scholar, flashcards);
+        }
+
+        Action PreservedState(FlashcardsViewModel vm, string name)
+        {
+            var decks = vm.Decks.ToArray();
+            var active = vm.ActiveDeck;
+            var card = vm.CurrentCard;
+            int index = vm.CurrentCardIndex;
+            bool flipped = vm.IsCardFlipped;
+            string progress = vm.SessionProgress, stats = vm.DeckStats, export = vm.ExportStatus;
+            var studied = active!.LastStudied;
+            int reviews = card!.ReviewCount;
+            return () => Assert(vm.Decks.SequenceEqual(decks) && ReferenceEquals(vm.ActiveDeck, active) &&
+                ReferenceEquals(vm.CurrentCard, card) && vm.CurrentCardIndex == index && vm.IsCardFlipped == flipped &&
+                vm.SessionProgress == progress && vm.DeckStats == stats && vm.ExportStatus == export &&
+                active.LastStudied == studied && card.ReviewCount == reviews,
+                $"M1-PUSH {name}: existing deck identities, selected card, review and study state preserved");
+        }
+
+        foreach (string? text in new string?[] { null, "", " ", "\r\n\t" })
+        {
+            var (scholar, flashcards) = Fixture();
+            using (scholar) using (flashcards)
+            {
+                var check = PreservedState(flashcards, "empty");
+                int resolves = 0, navigations = 0;
+                scholar.FlashcardsPushTargetOverride = () => { resolves++; return flashcards; };
+                scholar.FlashcardsPushNavigationOverride = _ => navigations++;
+                scholar.OcrResultText = text!;
+                scholar.LastOperationStatus = "Stale success";
+                scholar.PushToFlashcardsCommand.Execute(null);
+                Assert(scholar.LastOperationStatus == empty && resolves == 0 && navigations == 0,
+                    "M1-PUSH empty: explicit feedback precedes target resolution; no navigation or stale success");
+                check();
+            }
+        }
+
+        foreach (bool throwResolver in new[] { false, true })
+        {
+            var (scholar, flashcards) = Fixture();
+            using (scholar) using (flashcards)
+            {
+                var check = PreservedState(flashcards, "unavailable");
+                int navigations = 0;
+                scholar.OcrResultText = "Valid study term: a sufficiently long definition";
+                scholar.FlashcardsPushTargetOverride = () => throwResolver ?
+                    throw new InvalidOperationException("PRIVATE CONTENT C:\\private\\paper.pdf") : null;
+                scholar.FlashcardsPushNavigationOverride = _ => navigations++;
+                scholar.PushToFlashcardsCommand.Execute(null);
+                Assert(scholar.LastOperationStatus == unavailable && navigations == 0,
+                    "M1-PUSH unavailable: absent/throwing target produces safe status and no navigation");
+                check();
+            }
+        }
+
+        foreach (string text in new[] { "Study term: a sufficiently long definition", "abc", "Unstructured source without a question pair" })
+        {
+            var (scholar, flashcards) = Fixture();
+            using (scholar) using (flashcards)
+            {
+                var oldDecks = flashcards.Decks.ToArray();
+                int navigations = 0;
+                scholar.OcrResultText = text;
+                // HasLoadedDocument remains false: manually entered text is a real supported source.
+                scholar.FlashcardsPushNavigationOverride = route =>
+                {
+                    navigations++;
+                    Assert(route == "Flashcards" && flashcards.Decks.Count == oldDecks.Length + 1 &&
+                        flashcards.ActiveDeck is { CardCount: > 0 } created && !oldDecks.Contains(created) &&
+                        scholar.LastOperationStatus == success && flashcards.ExportStatus == success,
+                        "M1-PUSH success: real nonempty insertion and exact Desktop copy precede legacy route request");
+                };
+                scholar.PushToFlashcardsCommand.Execute(null);
+                Assert(navigations == 1 && scholar.LastOperationStatus == success &&
+                    !scholar.LastOperationStatus.Contains("Studio", StringComparison.Ordinal) &&
+                    oldDecks.All(flashcards.Decks.Contains),
+                    "M1-PUSH success: exact truthful destination, one navigation, prior decks retained");
+            }
+        }
+
+        foreach (string fault in new[] { "zero-cards", "no-insertion", "insertion-exception", "selection-exception" })
+        {
+            var (scholar, flashcards) = Fixture();
+            using (scholar) using (flashcards)
+            {
+                var check = PreservedState(flashcards, fault);
+                int navigations = 0;
+                bool injected = false;
+                scholar.OcrResultText = "Study term: a sufficiently long definition";
+                scholar.FlashcardsPushNavigationOverride = _ => navigations++;
+                flashcards.Decks.CollectionChanged += (_, args) =>
+                {
+                    if (injected || args.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Add) return;
+                    injected = true;
+                    var created = (FlashcardDeck)args.NewItems![0]!;
+                    if (fault == "zero-cards") created.Cards.Clear();
+                    if (fault == "no-insertion") flashcards.Decks.Remove(created);
+                    if (fault == "insertion-exception") throw new InvalidOperationException("PRIVATE Scholar content");
+                };
+                bool selectionFault = false;
+                flashcards.PropertyChanged += (_, args) =>
+                {
+                    if (fault == "selection-exception" && !selectionFault && args.PropertyName == nameof(flashcards.ActiveDeck))
+                    {
+                        selectionFault = true;
+                        throw new InvalidOperationException("PRIVATE Scholar content");
+                    }
+                };
+                scholar.PushToFlashcardsCommand.Execute(null);
+                Assert(scholar.LastOperationStatus == (fault.EndsWith("exception", StringComparison.Ordinal) ? failed : noCards) &&
+                    navigations == 0 && injected,
+                    $"M1-PUSH {fault}: real generator/command guarded; no false success, content leak or navigation");
+                check();
+            }
+        }
+
+        foreach (bool throwNavigation in new[] { false, true })
+        {
+            var (scholar, flashcards) = Fixture();
+            using (scholar) using (flashcards)
+            {
+                int before = flashcards.Decks.Count;
+                scholar.OcrResultText = "Study term: a sufficiently long definition";
+                if (throwNavigation) scholar.FlashcardsPushNavigationOverride = _ =>
+                    throw new InvalidOperationException("PRIVATE C:\\private\\paper.pdf");
+                // The console test has no MainWindow: the null default navigator is also exercised.
+                scholar.PushToFlashcardsCommand.Execute(null);
+                Assert(scholar.LastOperationStatus == manual && flashcards.ExportStatus == manual &&
+                    flashcards.Decks.Count == before + 1 && flashcards.ActiveDeck is { CardCount: > 0 },
+                    "M1-PUSH navigation: absent/throwing navigation retains created cards with safe manual guidance");
+            }
+        }
+
+        Assert(ShellViewModel.PageMap["Flashcards"].PageType == typeof(Axora.Desktop.Views.FlashcardsPage),
+            "M1-PUSH route: Flashcards remains the legacy Desktop page, not a Studio handoff");
+        Assert(typeof(ScholarKitViewModel).Assembly.GetReferencedAssemblies().All(a => a.Name != "Axora.Studio"),
+            "M1-PUSH boundary: legacy command assembly has no Studio reference");
     }
 
     private static void VerifyR0ContractShape()

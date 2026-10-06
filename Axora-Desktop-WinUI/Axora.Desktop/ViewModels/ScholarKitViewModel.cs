@@ -1090,16 +1090,103 @@ public sealed partial class ScholarKitViewModel : ObservableObject, IDisposable
         }
     }
 
+    // Instance-local command seams; null in the application. No alternate generator or transfer.
+    internal Func<FlashcardsViewModel?>? FlashcardsPushTargetOverride { get; set; }
+    internal Action<string>? FlashcardsPushNavigationOverride { get; set; }
+
     [RelayCommand]
     private void PushToFlashcards()
     {
-        var flashcardsVm = App.TryGetService<FlashcardsViewModel>();
-        if (flashcardsVm is not null && !string.IsNullOrWhiteSpace(OcrResultText))
+        string text = OcrResultText;
+        string label = ImportedFileName;
+        if (string.IsNullOrWhiteSpace(text))
         {
-            flashcardsVm.GenerateCardsFromText(OcrResultText, ImportedFileName);
-            LastOperationStatus = "Generated flashcards in Flashcard Studio!";
-            App.MainAppWindow?.ShellRoot.NavigateTo("Flashcards");
+            LastOperationStatus = "Scholar content is empty. Enter text first.";
+            return;
         }
+
+        FlashcardsViewModel? target;
+        try { target = FlashcardsPushTargetOverride is { } resolve ? resolve() : App.TryGetService<FlashcardsViewModel>(); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"ScholarFlashcards target: {ex.GetType().Name}");
+            LastOperationStatus = "Flashcards are unavailable in AXORA Desktop.";
+            return;
+        }
+        if (target is null)
+        {
+            LastOperationStatus = "Flashcards are unavailable in AXORA Desktop.";
+            return;
+        }
+
+        var decksBefore = target.Decks.ToArray();
+        var activeBefore = target.ActiveDeck;
+        var cardBefore = target.CurrentCard;
+        int indexBefore = target.CurrentCardIndex;
+        bool flippedBefore = target.IsCardFlipped;
+        string progressBefore = target.SessionProgress;
+        string statsBefore = target.DeckStats;
+        var studiedBefore = activeBefore?.LastStudied;
+
+        // Generation remains synchronous on the command thread and uses the existing owner.
+        // Restore only its newly inserted deck and the selection it may have changed.
+        void RestoreStudyState()
+        {
+            foreach (var deck in target.Decks.Where(deck => !decksBefore.Contains(deck)).ToArray())
+                target.Decks.Remove(deck);
+            target.ActiveDeck = activeBefore;
+            target.CurrentCardIndex = indexBefore;
+            target.CurrentCard = cardBefore;
+            target.IsCardFlipped = flippedBefore;
+            target.SessionProgress = progressBefore;
+            target.DeckStats = statsBefore;
+            if (activeBefore is not null && studiedBefore is { } studied) activeBefore.LastStudied = studied;
+        }
+
+        try
+        {
+            target.GenerateCardsFromText(text, label);
+            var created = target.ActiveDeck;
+            if (target.Decks.Count != decksBefore.Length + 1 || created is null ||
+                decksBefore.Contains(created) || !target.Decks.Contains(created) || created.Cards.Count == 0)
+            {
+                RestoreStudyState();
+                LastOperationStatus = "No flashcards were created. Existing decks are unchanged.";
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"ScholarFlashcards generation: {ex.GetType().Name}");
+            try
+            {
+                RestoreStudyState();
+                LastOperationStatus = "Couldn't create flashcards. Existing decks are unchanged.";
+            }
+            catch (Exception cleanupError)
+            {
+                System.Diagnostics.Debug.WriteLine($"ScholarFlashcards recovery: {cleanupError.GetType().Name}");
+                LastOperationStatus = "Couldn't create flashcards. Check your AXORA Desktop decks.";
+            }
+            return;
+        }
+
+        // Creation is proven before navigation. Also show feedback on the destination page,
+        // since Scholar's own status is no longer visible after successful navigation.
+        LastOperationStatus = "Created flashcards in AXORA Desktop.";
+        target.ExportStatus = LastOperationStatus;
+        try
+        {
+            if (FlashcardsPushNavigationOverride is { } navigate) navigate("Flashcards");
+            else if (App.MainAppWindow is { } window) window.ShellRoot.NavigateTo("Flashcards");
+            else LastOperationStatus = "Created cards in AXORA Desktop. Open Flashcards manually.";
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"ScholarFlashcards navigation: {ex.GetType().Name}");
+            LastOperationStatus = "Created cards in AXORA Desktop. Open Flashcards manually.";
+        }
+        target.ExportStatus = LastOperationStatus;
     }
 
     [RelayCommand]
