@@ -36,6 +36,13 @@ public static class StudioBootstrap
                 services.AddSingleton<Func<FlashcardExportCoordinator>>(sp => () => sp.GetRequiredService<FlashcardExportCoordinator>());
                 // Delegate only: the App session owns the instance; Host never owns native speech cleanup.
                 services.AddSingleton<Func<IFlashcardReadAloudService>>(_ => () => new FlashcardReadAloudService(new WindowsFlashcardReadAloudBackend()));
+                services.AddSingleton<ResumeCodec>();
+                services.AddSingleton<ResumeStore>();
+                services.AddSingleton<IResumeFilePublisher, ResumeFilePublisher>();
+                services.AddSingleton<IResumeFilePicker, ResumeFilePicker>();
+                services.AddSingleton<ResumeSession>();
+                services.AddSingleton<ResumeViewModel>();
+                services.AddSingleton<Func<ResumeViewModel>>(sp => () => sp.GetRequiredService<ResumeViewModel>());
                 configure?.Invoke(services);
             }).Build();
     }

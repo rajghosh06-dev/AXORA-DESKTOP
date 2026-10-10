@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace Axora.Studio.Models;
 
-public enum StudioRoute { Home = 0, Settings = 1, About = 2, Flashcards = 3 }
+public enum StudioRoute { Home = 0, Settings = 1, About = 2, Flashcards = 3, ResumeDashboard = 4, ResumeEditor = 5 }
 public sealed record StudioRouteEntry(StudioRoute Route, string Label, Type PageType, Symbol Icon);
 
 public static class StudioRoutes
@@ -12,6 +12,8 @@ public static class StudioRoutes
     {
         new StudioRouteEntry(StudioRoute.Home, "Home", typeof(HomePage), Symbol.Home),
         new StudioRouteEntry(StudioRoute.Flashcards, "Flashcards", typeof(FlashcardsPage), Symbol.Library),
+        new StudioRouteEntry(StudioRoute.ResumeDashboard, "Resume Dashboard", typeof(ResumeDashboardPage), Symbol.Document),
+        new StudioRouteEntry(StudioRoute.ResumeEditor, "Resume Editor", typeof(ResumeEditorPage), Symbol.Edit),
         new StudioRouteEntry(StudioRoute.Settings, "Settings", typeof(SettingsPage), Symbol.Setting),
         new StudioRouteEntry(StudioRoute.About, "About", typeof(AboutPage), Symbol.Help)
     });

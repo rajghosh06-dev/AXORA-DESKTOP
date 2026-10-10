@@ -1,0 +1,41 @@
+<Page x:Class="Axora.Studio.Views.ResumeDashboardPage"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <Grid RowSpacing="20">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <StackPanel Spacing="8">
+   <TextBlock Text="Your resumes" FontSize="28" FontWeight="SemiBold"/>
+   <TextBlock Text="Create, edit and save a managed copy. Imported originals stay untouched." TextWrapping="Wrap" Opacity="0.75"/>
+  </StackPanel>
+  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
+   <Button Content="New Resume" Command="{x:Bind ViewModel.NewCommand}" AutomationProperties.AutomationId="Resume.New" Style="{StaticResource AccentButtonStyle}"/>
+   <Button Content="Import Copy" Command="{x:Bind ViewModel.ImportCommand}" AutomationProperties.AutomationId="Resume.Import"/>
+   <Button Content="Refresh" Command="{x:Bind ViewModel.RefreshCommand}" AutomationProperties.AutomationId="Resume.Refresh"/>
+  </StackPanel>
+  <ListView Grid.Row="2" ItemsSource="{x:Bind ViewModel.Documents}" SelectionMode="None" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Managed resumes">
+   <ListView.ItemTemplate>
+    <DataTemplate>
+     <Grid Padding="12" ColumnSpacing="16">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel Spacing="4"><TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock Text="{Binding ModifiedUtc}" Opacity="0.7"/><TextBlock Text="{Binding Status}" Opacity="0.7"/></StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+       <Button Content="Open" IsEnabled="{Binding CanOpen}" Click="OnOpen" AutomationProperties.AutomationId="Resume.Open"/>
+       <Button Content="Saved revisions" Click="OnReviewRecovery" AutomationProperties.AutomationId="Resume.ReviewRecovery"/>
+      </StackPanel>
+     </Grid>
+    </DataTemplate>
+   </ListView.ItemTemplate>
+  </ListView>
+  <ScrollViewer Grid.Row="3" MaxHeight="100" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+  <ItemsControl ItemsSource="{x:Bind ViewModel.RecoveryEntries}">
+   <ItemsControl.ItemTemplate><DataTemplate><Button Content="{Binding Label}" Click="OnRecover" Margin="0,0,0,6" AutomationProperties.AutomationId="Resume.Recover"/></DataTemplate></ItemsControl.ItemTemplate>
+  </ItemsControl>
+  </ScrollViewer>
+  <Grid Grid.Row="4" ColumnSpacing="12">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <TextBlock Text="{x:Bind ViewModel.Status, Mode=OneWay}" TextWrapping="Wrap" VerticalAlignment="Center" AutomationProperties.AutomationId="Resume.Status"/>
+   <Button Grid.Column="1" Content="Previous" Command="{x:Bind ViewModel.PreviousPageCommand}"/>
+   <Button Grid.Column="2" Content="Next" Command="{x:Bind ViewModel.NextPageCommand}"/>
+  </Grid>
+ </Grid>
+</Page>

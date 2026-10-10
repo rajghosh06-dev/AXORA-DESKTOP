@@ -15,7 +15,8 @@ internal static class HostTests
         "paths-defaults-canary", "settings-roundtrip", "corrupt-recovery", "future-schema",
         "unsupported-numeric-schema", "unreadable-settings", "destination-change", "final-recheck-change", "corrupt-classification",
         "staging-failure", "replacement-failure", "commit-region-cancellation", "post-commit-cancellation",
-        "writer-lease", "routes", "settings-viewmodel"
+        "writer-lease", "routes", "settings-viewmodel", "resume-lazy", "resume-routes-guard", "resume-inactive-shutdown",
+        "resume-active-shutdown", "resume-export-coexistence", "resume-audio-independence"
     });
 
     public static async Task RunAsync(Checks c)
@@ -33,15 +34,16 @@ internal static class HostTests
             c.That(host.Services.GetRequiredService<StudioSettingsService>() is not null, "Production DI graph resolves settings");
             c.That(host.Services.GetRequiredService<StudioSettingsService>().BeforeFinalRecheckForTest is null,
                 "Normal production composition leaves final-recheck test hook dormant");
-            c.That(host.Services.GetRequiredService<ShellViewModel>().Routes.Count == 4, "Production DI resolves four real routes");
+            c.That(host.Services.GetRequiredService<ShellViewModel>().Routes.Count == 6, "Production DI resolves six real routes");
             c.That(host.Services.GetRequiredService<SettingsViewModel>().Themes.Count == 3, "Production DI resolves settings VM");
             c.That(!host.Services.GetServices<IHostedService>().Any(), "No automatic feature/background startup");
             Type[] owned = descriptors.Select(x => x.ServiceType).Where(t => t.Namespace?.StartsWith("Axora.Studio") == true).ToArray();
             Type[] expected = [typeof(StudioPathService), typeof(StudioWriterLease), typeof(ISettingsFilePublisher),
                 typeof(StudioSettingsService), typeof(ShellViewModel), typeof(SettingsViewModel),
                 typeof(FlashcardReviewPolicy), typeof(FlashcardTextGenerator), typeof(FlashcardsViewModel),
-                typeof(IStudioSavePicker), typeof(IExportFilePublisher), typeof(FlashcardExportCoordinator)];
-            c.That(owned.ToHashSet().SetEquals(expected), "Exact H0 plus core Flashcards registration inventory");
+                typeof(IStudioSavePicker), typeof(IExportFilePublisher), typeof(FlashcardExportCoordinator),
+                typeof(ResumeCodec), typeof(ResumeStore), typeof(IResumeFilePublisher), typeof(IResumeFilePicker), typeof(ResumeSession), typeof(ResumeViewModel)];
+            c.That(owned.ToHashSet().SetEquals(expected), "Exact H0, Flashcards and lazy Resume registration inventory");
             await host.StopAsync();
         });
         await c.CaseAsync("startup-failure", async () =>
@@ -436,11 +438,11 @@ internal static class HostTests
         await c.CaseAsync("routes", () =>
         {
             var vm = new ShellViewModel();
-            c.That(StudioRoutes.All.Select(r => r.Route).ToHashSet().SetEquals(Enum.GetValues<StudioRoute>()), "Exactly four real routes in catalog");
+            c.That(StudioRoutes.All.Count == 6 && StudioRoutes.All.Select(r => r.Route).ToHashSet().SetEquals(Enum.GetValues<StudioRoute>()), "Exactly six real routes in catalog");
             foreach (var item in StudioRoutes.All)
             {
                 vm.Navigate(item.Route);
-                c.That(vm.SelectedRoute == item.Route && StudioRoutes.Resolve(item.Route).PageType.Name == item.Label + "Page", "Actual page resolution " + item.Label);
+                c.That(vm.SelectedRoute == item.Route && StudioRoutes.Resolve(item.Route).PageType.Name == item.Label.Replace(" ", "") + "Page", "Actual page resolution " + item.Label);
             }
             var priorRoute = vm.SelectedRoute;
             bool rejected = false; try { vm.Navigate((StudioRoute)999); } catch (ArgumentOutOfRangeException) { rejected = true; }
@@ -469,9 +471,124 @@ internal static class HostTests
             await c.ThrowsAsync<InvalidOperationException>(() => f.Settings.SaveAsync(StudioTheme.Dark), "Shutdown closes new settings-save admission");
             await c.ThrowsAsync<InvalidOperationException>(() => f.Settings.LoadAsync(), "Shutdown closes new settings-load admission");
         });
+        await c.CaseAsync("resume-lazy", async () =>
+        {
+            using var f = new ResumeTests.Fixture();
+            int sessions = 0, pickers = 0;
+            using var host = StudioBootstrap.BuildHost(new StudioPathService(f.Base), services =>
+            {
+                services.AddSingleton<ResumeSession>(sp => { sessions++; return new(sp.GetRequiredService<ResumeStore>(), sp.GetRequiredService<ResumeCodec>(), sp.GetRequiredService<IResumeFilePublisher>()); });
+                services.AddSingleton<IResumeFilePicker>(_ => { pickers++; return new ResumePicker(); });
+            });
+            await host.StartAsync();
+            var lazy = new Lazy<ResumeViewModel>(host.Services.GetRequiredService<Func<ResumeViewModel>>());
+            foreach (var route in new[] {StudioRoute.Home,StudioRoute.Settings,StudioRoute.About,StudioRoute.Flashcards})
+                c.That(MainWindow.ResolveResume(route,lazy) is null,"Unrelated route never resolves Resume");
+            c.That(sessions==0 && pickers==0 && !Directory.Exists(f.Store.Root),"Home resolves no session/picker/files or scans");
+            c.That(MainWindow.ResolveResume(StudioRoute.ResumeDashboard,lazy) is not null && MainWindow.ResolveResume(StudioRoute.ResumeEditor,lazy) is not null && sessions==1 && pickers==1,"Both Resume routes share exactly one lazy session/picker");
+            c.That(host.Services.GetRequiredService<ResumeStore>().Enumerations==0,"Resume resolution itself does not enumerate storage");
+            await host.StopAsync();
+        });
+        await c.CaseAsync("resume-routes-guard", async () =>
+        {
+            using var f = new ResumeTests.Fixture(); await f.SavedAsync();
+            var resume = new ResumeViewModel(f.Session,f.Store,new ResumePicker()); var shell = new ShellViewModel();
+            shell.Navigate(StudioRoute.ResumeEditor);
+            ResumeDeparture answer = ResumeDeparture.Cancel;
+            resume.Configure(()=>0,()=>Task.FromResult(answer),_=>Task.FromResult(true),shell.NavigateAsync,a=>a());
+            shell.DepartureGuard = _=>resume.GuardDepartureAsync();
+            f.Session.Edit(f.Session.Current!.Document with {Summary="route dirty"});
+            foreach(var route in new[] {StudioRoute.ResumeDashboard,StudioRoute.Home,StudioRoute.Settings,StudioRoute.About,StudioRoute.Flashcards})
+                c.That(!await shell.NavigateAsync(route) && shell.SelectedRoute==StudioRoute.ResumeEditor,"Every route Cancel preserves editor");
+            await c.ThrowsAsync<InvalidOperationException>(()=>{shell.SelectedRoute=StudioRoute.Home;return Task.CompletedTask;},"Direct setter cannot bypass configured guard");
+            answer=ResumeDeparture.Save;
+            c.That(await shell.NavigateAsync(StudioRoute.ResumeDashboard) && !f.Session.IsDirty,"Route Save persists before committing destination route");
+            await shell.NavigateAsync(StudioRoute.ResumeEditor);f.Session.Edit(f.Session.Current!.Document with {Summary="discard route"});answer=ResumeDeparture.Discard;
+            c.That(await shell.NavigateAsync(StudioRoute.Home) && f.Session.Current!.Document.Summary=="route dirty","Route Discard restores saved semantic baseline");
+        });
+        await c.CaseAsync("resume-inactive-shutdown", async () =>
+        {
+            int resumes=0,exports=0,audio=0,hostStops=0;
+            var resume=new Lazy<ResumeViewModel>(()=>{resumes++;throw new InvalidOperationException();});
+            var export=new StudioExportSession(()=>{exports++;throw new InvalidOperationException();});
+            var speech=new StudioReadAloudSession(()=>{audio++;throw new InvalidOperationException();});
+            c.That(!App.HasActiveFileWork(export,resume),"Unused file-work aggregate is inactive");
+            await App.RetainFileWorkAsync(speech,export,resume,()=>{hostStops++;return Task.CompletedTask;});
+            c.That(resumes==0 && exports==0 && audio==0 && hostStops==1,"Unused shutdown constructs no optional features and settles host once");
+        });
+        await c.CaseAsync("resume-active-shutdown", async () =>
+        {
+            using var f=new ResumeTests.Fixture();await f.SavedAsync();var entered=NewSignal();var release=NewSignal();
+            var lazy=new Lazy<ResumeViewModel>(()=>new(f.Session,f.Store,new ResumePicker()));_=lazy.Value;
+            var host=new ProbeHost();var lifecycle=new StudioLifecycle(host,()=>Task.CompletedTask);
+            await lifecycle.StartAsync(_=>Task.CompletedTask,()=>{});
+            f.Session.Edit(f.Session.Current!.Document with {Summary="host retention"});
+            f.Publisher.BeforePhaseForTest=async phase=>{if(phase=="stage"){entered.SetResult();await release.Task;}};
+            var save=f.Session.SaveAsync();await entered.Task;
+            var export=new StudioExportSession(()=>throw new InvalidOperationException());var speech=new StudioReadAloudSession(()=>throw new InvalidOperationException());
+            c.That(App.HasActiveFileWork(export,lazy),"Resume-only admitted publication is integrity-critical");
+            var shutdown=App.RetainFileWorkAsync(speech,export,lazy,lifecycle.ShutdownAsync);
+            c.That(!shutdown.IsCompleted && host.Disposals==0,"Host disposal withheld until Resume settlement");
+            release.SetResult();await save;await shutdown;
+            c.That(host.Disposals==1 && host.Stops==1 && f.Session.IsClosed,"Resume settlement closes admission before single host disposal");
+        });
+        await c.CaseAsync("resume-export-coexistence", async () =>
+        {
+            foreach(bool withResume in new[]{false,true}) foreach(bool withExport in new[]{false,true})
+            {
+                using var f=new ResumeTests.Fixture();await f.SavedAsync();
+                var resumeEntered=NewSignal();var resumeRelease=NewSignal();var exportEntered=NewSignal();var exportRelease=NewSignal();
+                var lazy=new Lazy<ResumeViewModel>(()=>new(f.Session,f.Store,new ResumePicker()));if(withResume)_=lazy.Value;
+                var publisher=new ExportFilePublisher(new StudioPathService(f.Base),(boundary,_)=>{if(boundary==ExportBoundary.CommitAdmitted){exportEntered.SetResult();exportRelease.Task.GetAwaiter().GetResult();}});
+                var exports=new StudioExportSession(()=>new(new ResumeExportPicker(Path.Combine(f.Base,"coexist.json")),publisher));
+                var audio=new StudioReadAloudSession(()=>throw new InvalidOperationException());
+                Task<ResumeResult>? save=null;Task<FlashcardExportOutcome>? export=null;
+                if(withResume){f.Session.Edit(f.Session.Current!.Document with {Summary="simultaneous save"});f.Publisher.BeforePhaseForTest=async phase=>{if(phase=="stage"){resumeEntered.SetResult();await resumeRelease.Task;}};save=f.Session.SaveAsync();await resumeEntered.Task;}
+                if(withExport)
+                {
+                    var snapshot=new FlashcardExportSnapshot(DateTimeOffset.UtcNow,new FlashcardExportDeck(Guid.NewGuid().ToString("N"),"fixture","",null,[new FlashcardExportCard(Guid.NewGuid().ToString("N"),"front","back",CardDifficulty.Medium,0,2.5,1,null,null)]));
+                    export=exports.ExportAsync(1,FlashcardExportFormat.AxoraJson,()=>new(snapshot,null,""));await exportEntered.Task;
+                }
+                int hostStops=0;var shutdown=App.RetainFileWorkAsync(audio,exports,lazy,()=>{hostStops++;return Task.CompletedTask;});
+                c.That(App.HasActiveFileWork(exports,lazy)==(withResume||withExport),"Aggregate covers A2-only, Resume-only, both and neither");
+                c.That(hostStops==((withResume||withExport)?0:1),"Host cannot pass either retained file owner");
+                if(withResume){resumeRelease.SetResult();c.That((await save!).Success,"Resume publication survives independent A2 shutdown");}
+                if(withExport){c.That(hostStops==0,"A2 remains independently retained after Resume release");exportRelease.SetResult();c.That((await export!).State==ExportResultState.Published,"Admitted A2 publication survives concurrent Resume shutdown");}
+                await shutdown;c.That(hostStops==1,"Aggregate file settlement calls host exactly once");
+            }
+        });
+        await c.CaseAsync("resume-audio-independence", async () =>
+        {
+            using var f=new ResumeTests.Fixture();await f.SavedAsync();var entered=NewSignal();var release=NewSignal();
+            var lazy=new Lazy<ResumeViewModel>(()=>new(f.Session,f.Store,new ResumePicker()));_=lazy.Value;
+            var backend=new ResumeAudioBackend();var deadlineEntered=NewSignal();var deadlineRelease=NewSignal();
+            var service=new FlashcardReadAloudService(backend,token=>{deadlineEntered.TrySetResult();return deadlineRelease.Task.WaitAsync(token);});
+            var audio=new StudioReadAloudSession(()=>service);var speech=audio.ReadAsync(new(Guid.NewGuid(),"generic native-free text"));await backend.Entered.Task;
+            f.Session.Edit(f.Session.Current!.Document with {Summary="audio-independent save"});f.Publisher.BeforePhaseForTest=async phase=>{if(phase=="stage"){entered.SetResult();await release.Task;}};
+            var save=f.Session.SaveAsync();await entered.Task;int hostStops=0;
+            var shutdown=App.RetainFileWorkAsync(audio,new StudioExportSession(()=>throw new InvalidOperationException()),lazy,()=>{hostStops++;return Task.CompletedTask;});
+            await deadlineEntered.Task;deadlineRelease.SetResult();var audioResult=await audio.StopAsync();
+            c.That(audioResult.Cleanup==ReadAloudCleanup.Deferred && hostStops==0,"Bounded optional audio cannot abandon or prematurely dispose Resume work");
+            release.SetResult();await save;await shutdown;c.That(hostStops==1,"Host proceeds after file settlement without waiting for late native audio cleanup");
+            backend.Release.SetResult(new(Guid.NewGuid(),ReadAloudOutcome.Canceled,"late released"));await speech;
+        });
     }
 
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private sealed class ResumePicker : IResumeFilePicker { public Task<string?> SelectImportAsync(nint owner) => Task.FromResult<string?>(null); }
+    private sealed class ResumeExportPicker(string path) : IStudioSavePicker
+    {
+        public Task<StudioPickerResult> SelectAsync(nint owner, FlashcardExportFormat format, string name, CancellationToken token) => Task.FromResult(new StudioPickerResult(StudioPickerState.Selected, path));
+        public Task<StudioPickerState> ConfirmReplacementAsync(nint owner, Guid id, ExportDestinationPlan plan, CancellationToken token) => Task.FromResult(StudioPickerState.Selected);
+        public void RequestCancel() { }
+    }
+    private sealed class ResumeAudioBackend : IFlashcardReadAloudBackend
+    {
+        public TaskCompletionSource Entered = NewSignal();
+        public TaskCompletionSource<ReadAloudResult> Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<ReadAloudResult> RunAsync(ReadAloudRequest request, CancellationToken cancellation, Func<bool> mayPlay, Action<ReadAloudProgress> progress)
+        { Entered.SetResult(); return Release.Task; }
+    }
     private sealed class DelegatePublisher(Action<string, string, string> commit) : ISettingsFilePublisher
     { public void Commit(string stagedPath, string destination, string backup) => commit(stagedPath, destination, backup); }
     private sealed class DisposalProbe(List<string> events) : IDisposable

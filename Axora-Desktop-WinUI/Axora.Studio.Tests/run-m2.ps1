@@ -2,9 +2,9 @@
 param([ValidateRange(5,300)][int]$TimeoutSeconds = 135)
 $ErrorActionPreference = 'Stop'
 $executable = Join-Path $PSScriptRoot 'bin/x64/Debug/net9.0-windows10.0.26100.0/win-x64/Axora.Studio.Tests.exe'
-if (-not (Test-Path -LiteralPath $executable)) { throw 'Build Studio.Tests Debug/x64 before running M1.' }
-$expected = @('STUDIO-H0','STUDIO-M1-FLASHCARDS','STUDIO-M1-EXPORT','STUDIO-M1-READALOUD')
-$fullManifest = @($expected) + @('STUDIO-M2-RESUME')
+if (-not (Test-Path -LiteralPath $executable)) { throw 'Build Studio.Tests Debug/x64 before running M2.' }
+$expected = @('STUDIO-M2-RESUME','STUDIO-H0','STUDIO-M1-FLASHCARDS','STUDIO-M1-EXPORT','STUDIO-M1-READALOUD')
+$fullManifest = @($expected)
 $manifestText = & $executable --manifest
 if ($LASTEXITCODE -ne 0) { throw 'Manifest failed.' }
 $manifest = $manifestText | ConvertFrom-Json
@@ -13,8 +13,8 @@ $logRoot = Join-Path $PSScriptRoot 'logs'
 New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfff')
 foreach ($group in $expected) {
-    $stdout = Join-Path $logRoot "m1-$stamp-$group.stdout.log"
-    $stderr = Join-Path $logRoot "m1-$stamp-$group.stderr.log"
+    $stdout = Join-Path $logRoot "m2-$stamp-$group.stdout.log"
+    $stderr = Join-Path $logRoot "m2-$stamp-$group.stderr.log"
     $child = Start-Process -FilePath $executable -ArgumentList "--group=$group" -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     if (-not $child.WaitForExit($TimeoutSeconds * 1000)) {
         Write-Output "BLOCKED: $group exceeded ${TimeoutSeconds}s; PID=$($child.Id). No forced termination. Logs: $stdout; $stderr"

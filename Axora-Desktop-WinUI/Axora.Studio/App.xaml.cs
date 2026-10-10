@@ -14,10 +14,11 @@ public sealed partial class App : Application
     private readonly StudioDiagnostics _log;
     private readonly StudioExportSession _exports;
     private readonly StudioReadAloudSession _readAloud;
+    private readonly Lazy<ResumeViewModel> _resume;
     private MainWindow? _window;
     private Task? _launch;
     private StudioSettingsService? _settings;
-    public App(StudioPathService paths, StudioDiagnostics log)
+    public App(StudioPathService paths, StudioDiagnostics log, Action<IServiceCollection>? configureForTest = null)
     {
         _log = log;
         InitializeComponent();
@@ -27,8 +28,12 @@ public sealed partial class App : Application
             services.AddSingleton<IStudioSavePicker>(_ => new StudioSavePicker(_log.Write));
             services.AddSingleton<Func<IFlashcardReadAloudService>>(_ => () =>
                 new FlashcardReadAloudService(new WindowsFlashcardReadAloudBackend(_log.Write), log: _log.Write));
+            services.AddSingleton(sp => new ResumeSession(sp.GetRequiredService<ResumeStore>(), sp.GetRequiredService<ResumeCodec>(), sp.GetRequiredService<IResumeFilePublisher>(), _log.Write));
+            configureForTest?.Invoke(services);
         });
         var speechFactory = _host.Services.GetRequiredService<Func<IFlashcardReadAloudService>>();
+        var resumeFactory = _host.Services.GetRequiredService<Func<ResumeViewModel>>();
+        _resume = new(() => { var feature = resumeFactory(); _log.Write("Resume session created; count=1"); return feature; });
         _readAloud = new(() =>
         {
             var timer = System.Diagnostics.Stopwatch.StartNew();
@@ -52,8 +57,15 @@ public sealed partial class App : Application
         base.OnLaunched(args);
         _launch = LaunchAsync();
     }
-    public bool HasActiveExport => _exports.IsActive;
-    public Task ShutdownAsync() => _readAloud.ShutdownAsync(_exports, _lifecycle.ShutdownAsync);
+    public bool HasActiveIntegrityCriticalFilePublication => HasActiveFileWork(_exports, _resume);
+    public static bool HasActiveFileWork(StudioExportSession exports, Lazy<ResumeViewModel> resume) =>
+        exports.IsActive || (resume.IsValueCreated && resume.Value.Session.IsActive);
+    public static Task RetainFileWorkAsync(StudioReadAloudSession audio, StudioExportSession exports, Lazy<ResumeViewModel> resume, Func<Task> shutdownHost)
+    {
+        Task resumeSettlement = resume.IsValueCreated ? resume.Value.Session.StopAsync() : Task.CompletedTask;
+        return audio.ShutdownAsync(exports, async () => { await resumeSettlement.ConfigureAwait(false); await shutdownHost().ConfigureAwait(false); });
+    }
+    public Task ShutdownAsync() => RetainFileWorkAsync(_readAloud, _exports, _resume, _lifecycle.ShutdownAsync);
     private async Task LaunchAsync()
     {
         try
@@ -70,7 +82,7 @@ public sealed partial class App : Application
                 _log.Write($"Settings loaded; theme={loaded.Settings.Theme}; writable={loaded.CanSave}");
                 _window = new MainWindow(_host.Services.GetRequiredService<ShellViewModel>(),
                     _host.Services.GetRequiredService<SettingsViewModel>(), _log,
-                    _host.Services.GetRequiredService<Func<FlashcardsViewModel>>(), _exports, _readAloud);
+                    _host.Services.GetRequiredService<Func<FlashcardsViewModel>>(), _exports, _readAloud, _resume);
                 bool closePending = false;
                 bool shutdownFinished = false;
                 _window.AppWindow.Closing += async (_, closing) =>
@@ -81,7 +93,13 @@ public sealed partial class App : Application
                     closePending = true;
                     _log.Write("Window close requested");
                     _log.Write($"Window close context; thread={Environment.CurrentManagedThreadId}; apartment={Thread.CurrentThread.GetApartmentState()}");
-                    if (_exports.IsActive) _window.ShowExportClosePending();
+                    _window.ShowFileClosePending();
+                    Task<ReadAloudResult> pendingAudioCancellation = _readAloud.CancelCurrentAsync();
+                    try
+                    {
+                        if (!await _window.PrepareCloseAsync()) { closePending = false; _window.ClearClosePendingStatus(); _log.Write("Window close cancelled by Resume guard"); return; }
+                    }
+                    catch (Exception ex) { closePending = false; _window.ClearClosePendingStatus(); _log.Write($"Resume close guard failed: {ex.GetType().Name}"); return; }
                     _log.Write("Export close status updated; requesting session shutdown");
                     try
                     {

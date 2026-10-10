@@ -40,9 +40,9 @@ public static class Program
                 if (app is not null)
                 {
                     Task settlement = app.ShutdownAsync();
-                    if (app.HasActiveExport)
+                    if (app.HasActiveIntegrityCriticalFilePublication)
                     {
-                        log?.Write("Program fallback retains export settlement");
+                        log?.Write("Program fallback retains integrity-critical file settlement");
                         settlement.GetAwaiter().GetResult(); // No observation timeout may abandon file-integrity work.
                     }
                     else settlement.WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult();
