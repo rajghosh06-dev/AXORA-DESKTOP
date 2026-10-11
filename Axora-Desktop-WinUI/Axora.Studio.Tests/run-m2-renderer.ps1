@@ -118,6 +118,6 @@ Get-Content -LiteralPath $err
 $lines=@($output -split '\r?\n' | Where-Object { $_.StartsWith('STUDIO-LEDGER ') })
 if($child.ExitCode -ne 0 -or $lines.Count -ne 1){exit 1}
 $l=$lines[0].Substring(14)|ConvertFrom-Json
-if($l.group -ne 'STUDIO-M2-RENDERER' -or $l.totalRegisteredGroups -ne 6 -or $l.registeredGroups -ne 1 -or $l.executedGroups -ne 1 -or -not $l.complete -or $l.disposition -ne 'Pass' -or $l.failedAssertions -ne 0 -or $l.missing -ne 0 -or $l.duplicate -ne 0 -or $l.unknown -ne 0 -or $l.blocked -ne 0){exit 1}
+if($l.group -ne 'STUDIO-M2-RENDERER' -or $l.totalRegisteredGroups -ne 7 -or $l.registeredGroups -ne 1 -or $l.executedGroups -ne 1 -or -not $l.complete -or $l.disposition -ne 'Pass' -or $l.failedAssertions -ne 0 -or $l.missing -ne 0 -or $l.duplicate -ne 0 -or $l.unknown -ne 0 -or $l.blocked -ne 0){exit 1}
 exit 0
 
