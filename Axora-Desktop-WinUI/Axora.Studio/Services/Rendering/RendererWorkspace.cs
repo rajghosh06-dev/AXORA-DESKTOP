@@ -19,6 +19,9 @@ internal sealed class RendererWorkspace : IDisposable
     private IDisposable? _parents;
     private SafeFileHandle? _source;
     private readonly string _fixtureHash;
+    private TrustedRenderPackage? _package;
+    private SafeFileHandle? _data;
+    internal string ResumeData => Path.Combine(Input, "resume.json");
     private readonly WindowsRendererSandbox _sandbox;
     private bool _settled = true, _disposed;
     internal bool DeletePending { get; private set; }
@@ -53,10 +56,48 @@ internal sealed class RendererWorkspace : IDisposable
             workspace.Dispose(); throw;
         }
     }
+    // Separate sealed-package factory. The published one-file fixture creation is unchanged.
+    internal static RendererWorkspace Create(string workspaceBase, Guid id, TrustedRenderPackage package,
+        WindowsRendererSandbox sandbox, Action<string>? setupPhaseForTest = null)
+    {
+        if (id == Guid.Empty) throw new InvalidDataException("Invalid workspace identity");
+        RejectRedirects(workspaceBase);
+        sandbox.EnsureOwnedDirectory(workspaceBase, true);
+        var workspace = new RendererWorkspace(Path.Combine(Path.GetFullPath(workspaceBase), id.ToString("N")),
+            package.Template.TemplateSourceSha256, sandbox) { _package = package };
+        try
+        {
+            workspace._parents = PinAncestors(Path.Combine(workspaceBase, "placeholder"));
+            sandbox.RequireOwned(workspaceBase, true);
+            foreach (string path in new[] { workspace.Root, workspace.Input, workspace.Scratch, workspace.Packages, workspace.Cache })
+            {
+                workspace._directories.Add((path, sandbox.CreatePinnedDirectory(path, true)));
+                sandbox.RequireOwned(path, true);
+            }
+            workspace._source = sandbox.CreateFile(workspace.Source, true, 0xC0010000);
+            byte[] main = package.CopyMain();
+            RandomAccess.Write(workspace._source, main, 0);
+            if (!FlushFileBuffers(workspace._source)) throw new Win32Exception();
+            setupPhaseForTest?.Invoke("after-main");
+            workspace._data = sandbox.CreateFile(workspace.ResumeData, true, 0xC0010000);
+            byte[] data = package.CopyData();
+            RandomAccess.Write(workspace._data, data, 0);
+            if (!FlushFileBuffers(workspace._data)) throw new Win32Exception();
+            setupPhaseForTest?.Invoke("after-data");
+            workspace.Validate();
+            return workspace;
+        }
+        catch
+        {
+            if (!workspace.Cleanup()) { Quarantine.TryAdd(workspace, 0); throw new RendererWorkspaceSetupException(workspace.DeletePending); }
+            workspace.Dispose(); throw;
+        }
+    }
     internal void MarkRunning() => _settled = false;
     internal void MarkSettled() => _settled = true;
     internal void Validate()
     {
+        if (_package is not null) { ValidatePackage(); return; }
         BeforePhaseForTest?.Invoke("validate");
         RejectRedirects(Root);
         foreach (var item in _directories) _sandbox.RequireOwned(item.Path, true);
@@ -78,6 +119,46 @@ internal sealed class RendererWorkspace : IDisposable
                 if ((attributes & FileAttributes.Directory) != 0) pending.Push(path);
             }
     }
+    private void ValidatePackage()
+    {
+        BeforePhaseForTest?.Invoke("validate");
+        RejectRedirects(Root);
+        foreach (var item in _directories) _sandbox.RequireOwned(item.Path, true);
+        AuthenticatePackageFile(Source, _source, _package!.MainByteLength, _package.Template.TemplateSourceSha256, 64 * 1024);
+        AuthenticatePackageFile(ResumeData, _data, _package.DataByteLength, _package.RenderDataSha256, 4 * 1024 * 1024);
+        var allowed = new HashSet<string>(new[] { Input, Source, ResumeData, Scratch, Packages, Cache }, StringComparer.OrdinalIgnoreCase);
+        var pending = new Stack<string>(); pending.Push(Root); int count = 0;
+        while (pending.TryPop(out string? directory))
+            foreach (string path in Directory.EnumerateFileSystemEntries(directory))
+            {
+                if (++count > 6 || !allowed.Contains(path)) throw new InvalidDataException("Unexpected package artifact");
+                var attributes = File.GetAttributes(path);
+                if ((attributes & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("Redirected package artifact");
+                if ((attributes & FileAttributes.Directory) != 0) pending.Push(path);
+            }
+        if (count != 6) throw new InvalidDataException("Incomplete package namespace");
+    }
+    private void AuthenticatePackageFile(string path, SafeFileHandle? handle, int expectedLength, string expectedHash, int bound)
+    {
+        _sandbox.RequireOwned(path, true);
+        if (handle is null || handle.IsClosed || !GetFileInformationByHandle(handle, out var info) ||
+            (info.Attributes & 0x410) != 0 || info.Links != 1 || expectedLength < 1 || expectedLength > bound ||
+            RandomAccess.GetLength(handle) != expectedLength) throw new InvalidDataException("Package identity failure");
+        // The create handle never shares write/delete. Reopening and comparing identity also
+        // detects a namespace substitution without releasing the original deletion authority.
+        using var observed = CreateFileW(path, 0x80000000, 7, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero);
+        if (observed.IsInvalid) throw new Win32Exception();
+        if (!GetFileInformationByHandle(observed, out var other) || info.Volume != other.Volume ||
+            info.IndexHigh != other.IndexHigh || info.IndexLow != other.IndexLow) throw new InvalidDataException("Package substitution");
+        byte[] bytes = new byte[expectedLength]; int read = 0;
+        while (read < bytes.Length)
+        {
+            int count = RandomAccess.Read(handle, bytes.AsSpan(read), read);
+            if (count == 0) throw new InvalidDataException("Package truncated");
+            read += count;
+        }
+        if (Convert.ToHexString(SHA256.HashData(bytes)) != expectedHash) throw new InvalidDataException("Package integrity failure");
+    }
     internal bool Cleanup()
     {
         if (_disposed) return !DeletePending && NamespaceAbsent(Root);
@@ -87,6 +168,8 @@ internal sealed class RendererWorkspace : IDisposable
             BeforePhaseForTest?.Invoke("cleanup");
             // Parent handles remain pinned until every child handle is deleted, closed and checked.
             // No recursive/path-based delete; unexpected content prevents directory removal.
+            if (_data is not null && !_data.IsClosed) DeleteOwned(ResumeData, _data);
+            _data = null;
             if (_source is not null && !_source.IsClosed) DeleteOwned(Source, _source);
             _source = null;
             for (int i = _directories.Count - 1; i >= 0; i--)
@@ -117,6 +200,7 @@ internal sealed class RendererWorkspace : IDisposable
     public void Dispose()
     {
         if (!_settled || !Cleanup()) { if (!_disposed) Quarantine.TryAdd(this, 0); return; }
+        _data?.Dispose(); _data = null;
         _source?.Dispose(); _source = null;
         foreach (var item in _directories.AsEnumerable().Reverse()) item.Handle.Dispose();
         _directories.Clear(); _parents?.Dispose(); _parents = null;

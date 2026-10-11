@@ -24,4 +24,8 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Templates\Resume\SimpleV1.typ" LogicalName="Axora.Studio.Templates.Resume.SimpleV1.typ" />
+    <EmbeddedResource Include="Templates\Resume\TechnicalV1.typ" LogicalName="Axora.Studio.Templates.Resume.TechnicalV1.typ" />
+  </ItemGroup>
 </Project>
