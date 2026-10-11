@@ -1,5 +1,6 @@
 using Axora.Studio.Services;
 using Axora.Studio.Services.Contracts;
+using Axora.Studio.Services.Rendering;
 using Axora.Studio.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -15,6 +16,7 @@ public sealed partial class App : Application
     private readonly StudioExportSession _exports;
     private readonly StudioReadAloudSession _readAloud;
     private readonly Lazy<ResumeViewModel> _resume;
+    private readonly StudioRendererSession _renderer;
     private MainWindow? _window;
     private Task? _launch;
     private StudioSettingsService? _settings;
@@ -32,6 +34,7 @@ public sealed partial class App : Application
             configureForTest?.Invoke(services);
         });
         var speechFactory = _host.Services.GetRequiredService<Func<IFlashcardReadAloudService>>();
+        _renderer = new(_host.Services.GetRequiredService<Func<RendererCoordinator>>());
         var resumeFactory = _host.Services.GetRequiredService<Func<ResumeViewModel>>();
         _resume = new(() => { var feature = resumeFactory(); _log.Write("Resume session created; count=1"); return feature; });
         _readAloud = new(() =>
@@ -65,7 +68,15 @@ public sealed partial class App : Application
         Task resumeSettlement = resume.IsValueCreated ? resume.Value.Session.StopAsync() : Task.CompletedTask;
         return audio.ShutdownAsync(exports, async () => { await resumeSettlement.ConfigureAwait(false); await shutdownHost().ConfigureAwait(false); });
     }
-    public Task ShutdownAsync() => RetainFileWorkAsync(_readAloud, _exports, _resume, _lifecycle.ShutdownAsync);
+    public Task ShutdownAsync()
+    {
+        Task rendererSettlement = _renderer.ShutdownAsync();
+        return RetainFileWorkAsync(_readAloud, _exports, _resume, async () =>
+        {
+            try { await rendererSettlement.ConfigureAwait(false); }
+            finally { await _lifecycle.ShutdownAsync().ConfigureAwait(false); }
+        });
+    }
     private async Task LaunchAsync()
     {
         try

@@ -1,5 +1,6 @@
 using Axora.Studio.Services;
 using Axora.Studio.Services.Contracts;
+using Axora.Studio.Services.Rendering;
 using Axora.Studio.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -43,6 +44,8 @@ public static class StudioBootstrap
                 services.AddSingleton<ResumeSession>();
                 services.AddSingleton<ResumeViewModel>();
                 services.AddSingleton<Func<ResumeViewModel>>(sp => () => sp.GetRequiredService<ResumeViewModel>());
+                // The App session owns renderer shutdown. Resolving this delegate creates no native resources.
+                services.AddSingleton<Func<RendererCoordinator>>(_ => () => new RendererCoordinator());
                 configure?.Invoke(services);
             }).Build();
     }

@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $executable = Join-Path $PSScriptRoot 'bin/x64/Debug/net9.0-windows10.0.26100.0/win-x64/Axora.Studio.Tests.exe'
 if (-not (Test-Path -LiteralPath $executable)) { throw 'Build Studio.Tests Debug/x64 before running M1.' }
 $expected = @('STUDIO-H0','STUDIO-M1-FLASHCARDS','STUDIO-M1-EXPORT','STUDIO-M1-READALOUD')
-$fullManifest = @($expected) + @('STUDIO-M2-RESUME')
+$fullManifest = @($expected) + @('STUDIO-M2-RESUME','STUDIO-M2-RENDERER')
 $manifestText = & $executable --manifest
 if ($LASTEXITCODE -ne 0) { throw 'Manifest failed.' }
 $manifest = $manifestText | ConvertFrom-Json

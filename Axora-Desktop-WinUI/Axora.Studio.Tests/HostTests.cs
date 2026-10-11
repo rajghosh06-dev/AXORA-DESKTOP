@@ -1,6 +1,7 @@
 using Axora.Studio.Models;
 using Axora.Studio.Services;
 using Axora.Studio.Services.Contracts;
+using Axora.Studio.Services.Rendering;
 using Axora.Studio.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -16,11 +17,28 @@ internal static class HostTests
         "unsupported-numeric-schema", "unreadable-settings", "destination-change", "final-recheck-change", "corrupt-classification",
         "staging-failure", "replacement-failure", "commit-region-cancellation", "post-commit-cancellation",
         "writer-lease", "routes", "settings-viewmodel", "resume-lazy", "resume-routes-guard", "resume-inactive-shutdown",
-        "resume-active-shutdown", "resume-export-coexistence", "resume-audio-independence"
+        "resume-active-shutdown", "resume-export-coexistence", "resume-audio-independence", "renderer-lazy-shutdown"
     });
 
     public static async Task RunAsync(Checks c)
     {
+        await c.CaseAsync("renderer-lazy-shutdown", async () =>
+        {
+            using var fixture = new Fixture();
+            int creations = 0;
+            using var host = StudioBootstrap.BuildHost(fixture.Paths, services =>
+                services.AddSingleton<Func<RendererCoordinator>>(_ => () => { creations++; return new RendererCoordinator(); }));
+            var session = new StudioRendererSession(host.Services.GetRequiredService<Func<RendererCoordinator>>());
+            c.That(!session.IsCreated && creations == 0, "Host composition creates no renderer/runtime/profile");
+            c.That(new RendererCoordinator().WorkspaceCreatedForTest is null && new WindowsRendererProcess().BeforePhaseForTest is null,
+                "Production renderer fault hooks are dormant");
+            Task first = session.ShutdownAsync();
+            await first;
+            c.That(ReferenceEquals(first, session.ShutdownAsync()), "Unused renderer shutdown retains one task");
+            c.That(!session.IsCreated && creations == 0, "Unused shutdown creates no renderer");
+            var result = await session.RenderAsync(new(Guid.NewGuid()));
+            c.That(result.Outcome == Axora.Studio.Models.Rendering.RendererOutcome.AdmissionClosed && creations == 0, "Shutdown bars lazy admission");
+        });
         await c.CaseAsync("identity-composition", async () =>
         {
             c.That(typeof(StudioLifecycle).Assembly.GetName().Name == "Axora.Studio", "Actual assembly identity");
