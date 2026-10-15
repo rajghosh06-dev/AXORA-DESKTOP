@@ -27,5 +27,15 @@
   <ItemGroup>
     <EmbeddedResource Include="Templates\Resume\SimpleV1.typ" LogicalName="Axora.Studio.Templates.Resume.SimpleV1.typ" />
     <EmbeddedResource Include="Templates\Resume\TechnicalV1.typ" LogicalName="Axora.Studio.Templates.Resume.TechnicalV1.typ" />
+    <Compile Include="..\Shared\PdfValidationProtocol.cs" Link="PdfValidationProtocol.cs" />
+    <EmbeddedResource Include="..\Axora.PdfValidation.Worker\obj\foundation\$(Configuration)\win-x64\worker-bundle.json" LogicalName="Axora.PdfValidation.WorkerBundle.v1.json" />
   </ItemGroup>
+  <Target Name="BuildPdfFoundationWorker" BeforeTargets="PrepareForBuild">
+    <!-- Use the selected .NET SDK compiler for this console worker even when the
+         WinUI parent uses Visual Studio's newer Roslyn. No PATH tool discovery. -->
+    <Error Condition="'$(Configuration)' != 'Debug' and '$(Configuration)' != 'Release'" Text="Unsupported PdfValidation build configuration." />
+    <Error Condition="!Exists('$(NetCoreRoot)dotnet.exe')" Text="The selected .NET SDK host is required to publish PdfValidation." />
+    <Exec Command="&quot;$(NetCoreRoot)dotnet.exe&quot; publish &quot;$(MSBuildProjectDirectory)\..\Axora.PdfValidation.Worker\Axora.PdfValidation.Worker.csproj&quot; -c $(Configuration) -p:Platform=x64 --verbosity minimal"
+      WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
 </Project>

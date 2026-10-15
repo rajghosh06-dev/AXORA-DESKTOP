@@ -11,10 +11,10 @@ internal sealed class ResumeTemplateCatalog
     internal const int SourceLimit = 64 * 1024;
     private readonly ImmutableArray<ResumeTemplate> templates;
     internal static ImmutableArray<ResumeTemplateManifest> Manifests { get; } = [
-        new("axora.simple", 1, "Simple", "General", "Axora.Studio.Templates.Resume.SimpleV1.typ", 4496,
-            "3C58FE12E0AB0A5B65E232FDD6F6F78D29D28678E10DA4F2B02BD7F81EC8D229"),
-        new("axora.technical", 1, "Technical", "Technical", "Axora.Studio.Templates.Resume.TechnicalV1.typ", 4524,
-            "70EDA24913317FB3FDB0CB06DCD3E60CC342ECFD79F4B05CE08EB9EFF325E6D2")];
+        new("axora.simple", 1, "Simple", "General", "Axora.Studio.Templates.Resume.SimpleV1.typ", 4517,
+            "02EB1F658B5BC682A69903941D7B58BBBD8C00E24C09BE251C62055A39254805"),
+        new("axora.technical", 1, "Technical", "Technical", "Axora.Studio.Templates.Resume.TechnicalV1.typ", 4545,
+            "E4AC679E817B4C9EA87142477525AB19B470980D6F718F3B4A4FB9D48DAB6B26")];
     private static readonly Lazy<ResumeTemplateCatalog> EmbeddedValue = new(() => new(
         typeof(ResumeTemplateCatalog).Assembly.GetManifestResourceNames(),
         name => typeof(ResumeTemplateCatalog).Assembly.GetManifestResourceStream(name)));

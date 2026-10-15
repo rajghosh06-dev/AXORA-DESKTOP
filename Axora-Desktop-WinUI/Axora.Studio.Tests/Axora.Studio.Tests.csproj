@@ -15,4 +15,11 @@
   <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250228001" />
   <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
  </ItemGroup>
+ <Target Name="CopyPdfFoundationTestBundle" AfterTargets="Build">
+  <ItemGroup>
+   <PdfFoundationBundle Include="..\Axora.PdfValidation.Worker\obj\foundation\$(Configuration)\win-x64\bundle\*" />
+  </ItemGroup>
+  <Error Condition="'@(PdfFoundationBundle)' == ''" Text="Build-generated PdfValidation worker bundle is required for foundation tests." />
+  <Copy SourceFiles="@(PdfFoundationBundle)" DestinationFolder="$(TargetDir)PdfFoundationTestBundle" SkipUnchangedFiles="true" />
+ </Target>
 </Project>

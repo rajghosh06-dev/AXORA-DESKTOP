@@ -11,7 +11,7 @@
 #let accent = rgb(f.accentRed, f.accentGreen, f.accentBlue)
 #set page(paper: "a4", margin: f.marginInches * 1in)
 #set text(font: "Libertinus Serif", fallback: false, style: "normal",
-  weight: "regular", size: f.bodyPoints * 1pt, ligatures: false, hyphenate: false)
+  weight: "regular", size: f.bodyPoints * 1pt, ligatures: false, hyphenate: false, features: (calt: 0))
 #set smartquote(enabled: false)
 #set par(leading: f.leadingEm * 1em, spacing: f.itemGapEm * 1em)
 #set block(spacing: f.itemGapEm * 1em)

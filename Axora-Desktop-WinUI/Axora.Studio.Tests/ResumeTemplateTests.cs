@@ -100,7 +100,11 @@ internal static class ResumeTemplateTests
                     "No file/code/action/transitive capability reference in complete trusted program; JSON link property is a value");
                 int json = Array.IndexOf(tokens, "json");
                 c.That(tokens.Count(x => x == "json") == 1 && tokens.Skip(json).Take(4).SequenceEqual(new[] { "json", "(", "\"resume.json\"", ")" }), "Sole file capability is literal json resume.json");
-                c.That(source.Contains("fallback: false") && source.Contains("smartquote(enabled: false)") && !source.Contains("style: \"italic\""), "Exact serif profile, literal quotes and only proved regular/bold styles");
+                c.That(source.Contains("fallback: false") && source.Contains("ligatures: false") && source.Contains("hyphenate: false") && source.Contains("smartquote(enabled: false)") && !source.Contains("style: \"italic\""), "Exact serif profile, literal quotes and only proved regular/bold styles");
+                int features = Array.IndexOf(tokens, "features");
+                c.That(features > Array.IndexOf(tokens, "text") && features < Array.IndexOf(tokens, "smartquote") &&
+                    tokens.Count(x => x == "features") == 1 && tokens.Skip(features).Take(7).SequenceEqual(new[] { "features", ":", "(", "calt", ":", "0", ")" }),
+                    "Both reviewed embedded templates explicitly disable calt in the global text profile");
             }
             return Task.CompletedTask;
         });
